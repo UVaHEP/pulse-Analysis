@@ -6,6 +6,9 @@
 #include "TSpectrum.h"
 #include "TString.h"
 
+#define TSPECTFLOAT Float_t  // ROOT 5
+//#define TSPECTFLOAT Double_t // ROOT 6
+
 
 class DarkPeaker {
 public:
@@ -18,10 +21,10 @@ public:
   TH1F* GetBackground();
   int GetNPeaks();
   double CalcDarkRate();
-  Double_t* GetPositionX();
-  Double_t* GetPositionY();
-  Double_t* GetBkgdCorrectedY();
-  Double_t* GetDeltaX();
+  TSPECTFLOAT* GetPositionX();
+  TSPECTFLOAT* GetPositionY();
+  TSPECTFLOAT* GetBkgdCorrectedY();
+  TSPECTFLOAT* GetDeltaX();
 private:
   TSpectrum *tspectrum;
   TH1F *buf;
@@ -30,8 +33,8 @@ private:
   TF1  *tfNoise;
   int npeaks;
   double snglPeak;
-  Double_t *bkgCorrectedY;
-  Double_t *deltaX;
+  TSPECTFLOAT *bkgCorrectedY;
+  TSPECTFLOAT *deltaX;
   double dT;
 };
 

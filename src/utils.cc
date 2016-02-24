@@ -30,22 +30,22 @@ void DarkPeaker::SetBuffer(TH1F *newbuf, double sampleTime){
 }
 int DarkPeaker::GetNPeaks(){return npeaks;}
 TH1F* DarkPeaker::GetBackground(){return hbkg;}
-Double_t* DarkPeaker::GetPositionX(){ return tspectrum->GetPositionX();}
-Double_t* DarkPeaker::GetPositionY(){ return tspectrum->GetPositionY();}
-Double_t* DarkPeaker::GetBkgdCorrectedY(){
+TSPECTFLOAT* DarkPeaker::GetPositionX(){ return tspectrum->GetPositionX();}
+TSPECTFLOAT* DarkPeaker::GetPositionY(){ return tspectrum->GetPositionY();}
+TSPECTFLOAT* DarkPeaker::GetBkgdCorrectedY(){
   if (bkgCorrectedY) return bkgCorrectedY;
-  bkgCorrectedY = new Double_t[npeaks];
-  Double_t *xpeaks = tspectrum->GetPositionX();
-  Double_t *ypeaks = tspectrum->GetPositionY();
+  bkgCorrectedY = new TSPECTFLOAT[npeaks];
+  TSPECTFLOAT *xpeaks = tspectrum->GetPositionX();
+  TSPECTFLOAT *ypeaks = tspectrum->GetPositionY();
   for (int i=0; i<npeaks; i++)
     bkgCorrectedY[i]=ypeaks[i]-hbkg->GetBinContent((int)xpeaks[i]+1);
   return bkgCorrectedY;
 }
-Double_t* DarkPeaker::GetDeltaX(){
+TSPECTFLOAT* DarkPeaker::GetDeltaX(){
   Int_t *index=new Int_t[npeaks];
-  Double_t *xpeaks = tspectrum->GetPositionX();
+  TSPECTFLOAT *xpeaks = tspectrum->GetPositionX();
   TMath::Sort(npeaks, xpeaks, index, kFALSE);  // index sort by timestamp
-  deltaX=new Double_t[npeaks-1];
+  deltaX=new TSPECTFLOAT[npeaks-1];
   for (int i=0;i<npeaks-1;i++) {
     int idx1=index[i];
     int idx2=index[i+1];
@@ -82,7 +82,7 @@ int DarkPeaker::AnalyzePeaks(){
 
 void DarkPeaker::FindBackground(){
   int nbins=buf->GetNbinsX();
-  Double_t *bksource=new Double_t[nbins];
+  TSPECTFLOAT *bksource=new TSPECTFLOAT[nbins];
   for (int i = 0; i < nbins; i++) bksource[i]=buf->GetBinContent(i + 1);
   /*
   TH1 *hfft;
@@ -155,8 +155,8 @@ void DarkPeaker::FindNoise(){
   }
   else { // use 1PE from TSpectrum
     Int_t *index=new Int_t[npeaks];
-    Double_t *xpeaks= ts2->GetPositionX();
-    Double_t *ypeaks= ts2->GetPositionY();
+    TSPECTFLOAT *xpeaks= ts2->GetPositionX();
+    TSPECTFLOAT *ypeaks= ts2->GetPositionY();
     TMath::Sort(npeaks, xpeaks, index, kFALSE);  // index sort by x
     // not sure if absolute height is best or [height - mean noise]
     // use height for now

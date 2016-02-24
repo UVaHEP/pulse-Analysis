@@ -141,14 +141,14 @@ int main(int argc, char **argv) {
     dPk->AnalyzePeaks();
     
     // retrieve peak heights
-    Double_t *yvals = dPk->GetBkgdCorrectedY();
+    TSPECTFLOAT *yvals = dPk->GetBkgdCorrectedY();
     int npeaks=dPk->GetNPeaks();
 
     // Fill pulse height histogram
     for (int i=0;i<npeaks;i++) hpeaks->Fill(yvals[i]);
     
     // fill delta time distro
-    Double_t *deltaX = dPk->GetDeltaX();
+    TSPECTFLOAT *deltaX = dPk->GetDeltaX();
     for (int i=0;i<npeaks-1;i++) hdTime->Fill(deltaX[i]);
 
     // draw samples buffer with peaks and background
