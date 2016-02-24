@@ -21,4 +21,5 @@ env.Append(BUILDERS= {'cint': cintBuilder})
 
 env.Alias('install','/opt/uvahep/bin')
 env.Program('darkBuffers', ['darkBuffers.cc', 'utils.cc'])
+env.Program('pulseMeasurements', ['pulseMeasurements.cc'])
 

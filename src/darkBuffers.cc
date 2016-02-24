@@ -32,7 +32,8 @@ int main(int argc, char **argv) {
   int opt;
   bool quit=false;
   bool quiet=false;
-  while ((opt = getopt(argc, argv, "b:n:o:hq0")) != -1) {
+  chRange range = PS_20MV;
+  while ((opt = getopt(argc, argv, "R:b:n:o:hq0")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
@@ -43,6 +44,16 @@ int main(int argc, char **argv) {
     case 'o':
       outfn = optarg;
       std::cout<<"set outfn " << outfn<<std::endl;
+      break;
+    case 'R':
+      if (TString(optarg)=="PS_50MV") {
+	range = PS_50MV;
+	std::cout<<"setting range to PS_50MV"<<std::endl;
+      }
+      else if (TString(optarg)=="PS_20MV") {
+	std::cout<<"setting range to PS_20MV"<<std::endl;
+      }
+      else std::cout<<"Unknown range, defaulting to PS_20MV"<<std::endl;
       break;
     case 'q':   // exit when finished
       quit=true;
@@ -62,7 +73,7 @@ int main(int argc, char **argv) {
 
 
   ps5000a dev;
-  chRange range = PS_20MV;
+
   dev.open(picoscope::PS_12BIT);
   dev.setChCoupling(picoscope::A, picoscope::DC);
   dev.setChRange(picoscope::A, range);
