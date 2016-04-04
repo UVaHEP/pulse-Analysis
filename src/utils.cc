@@ -7,13 +7,15 @@
 using std::cout;
 using std::endl;
 
-DarkPeaker::DarkPeaker(){
+DarkPeaker::DarkPeaker(double peThreshold){
   tspectrum=new TSpectrum(5000,2);
   buf=0;
   hbkg=0;
   bkgCorrectedY=0;
   hdist=0;
+  if (peThreshold>-1e19) _peThreshold=peThreshold;
 }
+
 void DarkPeaker::SetBuffer(TH1F *newbuf, double sampleTime){
   buf=newbuf;
   dT=sampleTime;
@@ -69,7 +71,10 @@ int DarkPeaker::AnalyzePeaks(){
   FindNoise();
 
   // find peaks
-  double threshold = (snglPeak/2) / buf->GetMaximum();
+  double threshold;
+  if (_peThreshold>-1e19) threshold = _peThreshold / buf->GetMaximum();
+  else threshold = (snglPeak/2) / buf->GetMaximum();
+  cout << "snglPeak/2 : " << snglPeak/2 << endl;
   //
   double sigma=2; // this can/should be optimzed
   npeaks=tspectrum->Search(buf,sigma,"nobackground,nomarkov,nodraw",threshold);
@@ -112,9 +117,16 @@ void DarkPeaker::FindBackground(){
 void DarkPeaker::FindNoise(){
   // background subtracted sample data
   hdist=new TH1F("hdist","ADC distribution",
-		       100,-0.1*buf->GetMaximum(),buf->GetMaximum());
-  for (int i = 1; i <= buf->GetNbinsX(); i++)
+		       100,0,buf->GetMaximum());
+  hscan=new TH1F ("hscan","Threshold scan",50,0,buf->GetBinContent(buf->GetMaximumBin()));
+  for (int i = 1; i <= buf->GetNbinsX(); i++){
+    double val=buf->GetBinContent(i) - hbkg->GetBinContent(i);
     hdist->Fill( buf->GetBinContent(i) - hbkg->GetBinContent(i)  );
+    for (int b=1; b<=hscan->GetNbinsX(); b++){
+      if (val > hscan->GetBinLowEdge(b))
+	hscan->SetBinContent(b,hscan->GetBinContent(b)+1);
+    }
+  }		 
 
   double xmin=hdist->GetXaxis()->GetXmin();
   double xmax=hdist->GetXaxis()->GetXmax();
@@ -138,9 +150,13 @@ void DarkPeaker::FindNoise(){
   tf01->SetParameters(noiseY,noiseX,fwhm);
 
   // fit the noise
+  cout << "Fit for noise"<< endl;
   hdist->Fit("f01","0","",noiseX-fwhm,noiseX+fwhm);
-  double par[3];
+  double par[3];  // norm, mean, sigma for noise
   tf01->GetParameters(par);
+  //for (int b=1; b<=hscan->GetNbinsX(); b++){
+  //  if (hscan->GetBinCenter(b)<par[1]+2*par[2]) hscan->SetBinContent(b,0);
+  //}
 
   // use TSprectrum to find the 0,1 PE peaks
   TSpectrum *ts2=new TSpectrum();

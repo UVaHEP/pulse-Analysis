@@ -12,7 +12,7 @@
 
 class DarkPeaker {
 public:
-  DarkPeaker();
+  DarkPeaker(double peThreshold=-1e20);
   ~DarkPeaker(){;}
   void SetBuffer(TH1F *newbuf, double sampleTime);
   int AnalyzePeaks();
@@ -21,6 +21,7 @@ public:
   TH1F* GetBackground();
   int GetNPeaks();
   double CalcDarkRate();
+  void SetSearchThreshold(double peThreshold) {_peThreshold = peThreshold;}
   TSPECTFLOAT* GetPositionX();
   TSPECTFLOAT* GetPositionY();
   TSPECTFLOAT* GetBkgdCorrectedY();
@@ -29,9 +30,11 @@ private:
   TSpectrum *tspectrum;
   TH1F *buf;
   TH1F *hbkg;
-  TH1F *hdist;
+  TH1F *hdist;  // frequeny distribution of ADC samples
+  TH1F *hscan;  // count of samples above threshold
   TF1  *tfNoise;
   int npeaks;
+  double _peThreshold;
   double snglPeak;
   TSPECTFLOAT *bkgCorrectedY;
   TSPECTFLOAT *deltaX;
