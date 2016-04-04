@@ -13,7 +13,7 @@ DarkPeaker::DarkPeaker(double peThreshold){
   hbkg=0;
   bkgCorrectedY=0;
   hdist=0;
-  if (peThreshold>-1e19) _peThreshold=peThreshold;
+  if (peThreshold) _peThreshold=peThreshold;
 }
 
 void DarkPeaker::SetBuffer(TH1F *newbuf, double sampleTime){
@@ -182,6 +182,10 @@ void DarkPeaker::FindNoise(){
       "1PE estimated at " <<
       snglPeak << std::endl;
   }
+
+  //hdist->Write();
+  //hscan->Write();
+
   delete ts2;
 }
 // dark count rate in MHz

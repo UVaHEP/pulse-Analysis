@@ -29,11 +29,12 @@ int main(int argc, char **argv) {
   TString outfn="darkBuffers.root";
   int samples = 40000;
   int nbuffers = 50;
+  double peThreshold=0;
   int opt;
   bool quit=false;
   bool quiet=false;
   chRange range = PS_20MV;
-  while ((opt = getopt(argc, argv, "R:b:n:o:hq0")) != -1) {
+  while ((opt = getopt(argc, argv, "R:b:n:o:P:hq0")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
@@ -43,8 +44,11 @@ int main(int argc, char **argv) {
       break;
     case 'o':
       outfn = optarg;
-      std::cout<<"set outfn " << outfn<<std::endl;
+      std::cout<<"set output file " << outfn<<std::endl;
       break;
+    case 'P':
+      peThreshold=atof(optarg);
+      std::cout<<"1PE value " << peThreshold<<std::endl;
     case 'R':
       if (TString(optarg)=="PS_50MV") {
 	range = PS_50MV;
@@ -129,7 +133,7 @@ int main(int argc, char **argv) {
   tc1->Divide(2,1);
   gStyle->SetOptStat(0);
   
-  DarkPeaker *dPk = new DarkPeaker();
+  DarkPeaker *dPk = new DarkPeaker(peThreshold/2);
 
   bool first=false;
   int nbuf=0;
@@ -231,8 +235,8 @@ int main(int argc, char **argv) {
   f.Close();
 
   std::cout << "===============================" << std::endl;
-  std::cout << "Fit dark pulse rate: " << rate << std::endl;
-  std::cout << "After pulse rate: " << arate << std::endl;
+  std::cout << "Fit for dark pulse rate: " << rate << " MHz" << std::endl;
+  std::cout << "Afterpulse probability:  " << arate << std::endl;
   std::cout << "===============================" << std::endl;
   
   if (quit) return 0;
