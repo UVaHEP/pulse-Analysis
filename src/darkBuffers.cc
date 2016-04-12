@@ -24,6 +24,73 @@ void fitExp(TH1F *h, TString opt="L"){
 }
 
 
+void EventHandler(Int_t event, Int_t x, Int_t y, TObject *selected) {
+
+  std::cout << "Clicked" << std::endl;
+  std::cout << "X:" << x << " Y:" << y << std::endl;
+
+}
+
+
+void setupScope(ps5000a &dev,   chRange &range, int samples) { 
+  dev.setChCoupling(picoscope::A, picoscope::DC);
+  dev.setChRange(picoscope::A, range);
+  dev.enableChannel(picoscope::A);
+
+  dev.enableBandwidthLimit(picoscope::A); 
+  dev.setTimebase(1);
+  //dev.setSimpleTrigger(EXT, 18000, trgRising, 0, 0); 
+  dev.setSamples(samples); 
+  dev.setPreTriggerSamples(samples/2);
+  dev.setPostTriggerSamples(samples/2);
+
+}
+
+void userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
+  dev.setCaptureCount(1);
+  dev.prepareBuffers();
+  dev.captureBlock();
+  TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
+  TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,15000);
+  TH1F *hist = NULL;
+
+  float timebase = dev.timebaseNS();
+  std::cout << "Timebase: " << timebase << std::endl; 
+  vector <vector<short> > data = dev.getWaveforms();
+
+  vector<float> graphWaveform(data[0].size());
+  vector<float> graphtime(graphWaveform.size());
+  float timebaseStart = timebase*samples/2*-1;
+
+  auto waveform = data[0]; 
+  
+  for (int i = 0; i < waveform.size(); i++) {
+    graphtime[i] = timebaseStart+i*timebase;
+  }
+  
+  hist = new TH1F("pulses", "pulses", waveform.size(), 0, waveform.size());
+  for (int i = 0; i < waveform.size(); i++) {
+    hist->SetBinContent(i, -1*waveform[i]);
+  }
+  int iymax=(int)hist->GetMaximum();
+  iymax=iymax*1.1;
+  iymax-=iymax%1000;
+  hpeaks->SetBins(200,0,iymax);
+  hist->Draw();
+  tc->Update(); 
+  std::cout << "Please select the single peak threshold" << std::endl;
+
+  tc->Connect("ProcessedEvent(Int_t, Int_t, Int_t, TObject *)", 0, 0, "EventHandler(Int_t, Int_t, Int_t, TObject *)"); 
+  tc->Connect("Closed()", "TApplication", &app, "Terminate()"); 
+  app.SetReturnFromRun(true); 
+  app.Run(true); 
+  
+
+     
+
+  
+}
+
 int main(int argc, char **argv) {
 
   TString outfn="darkBuffers.root";
@@ -33,14 +100,19 @@ int main(int argc, char **argv) {
   int opt;
   bool quit=false;
   bool quiet=false;
+  bool userThreshold = false; 
   chRange range = PS_20MV;
-  while ((opt = getopt(argc, argv, "R:b:n:o:P:hq0")) != -1) {
+  while ((opt = getopt(argc, argv, "R:b:n:o:P:uhq0")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
       break;
     case 'b':
       nbuffers=atoi(optarg);
+      break;
+    case 'u':
+      // Capture first waveform, then allow the user to select a threshold
+      userThreshold = true;
       break;
     case 'o':
       outfn = optarg;
@@ -68,7 +140,7 @@ int main(int argc, char **argv) {
     case 'h':
     default: /* '?' */
       fprintf(stderr, "Usage: %s",argv[0]);
-      fprintf(stderr, "-s nsamples[40000] -b nbuffers[50] -o output[darkBuffers.root]\n");
+      fprintf(stderr, "-u -s nsamples[40000] -b nbuffers[50] -o output[darkBuffers.root]\n");
       exit(EXIT_FAILURE);
     }
   }
@@ -78,18 +150,17 @@ int main(int argc, char **argv) {
 
   ps5000a dev;
 
+  
   dev.open(picoscope::PS_12BIT);
-  dev.setChCoupling(picoscope::A, picoscope::DC);
-  dev.setChRange(picoscope::A, range);
-  dev.enableChannel(picoscope::A);
+  setupScope(dev, range, samples); 
 
-  dev.enableBandwidthLimit(picoscope::A); 
-  dev.setTimebase(1);
-  //dev.setSimpleTrigger(EXT, 18000, trgRising, 0, 0); 
-  dev.setSamples(samples); 
-  dev.setPreTriggerSamples(samples/2);
-  dev.setPostTriggerSamples(samples/2);
-  //  dev.setCaptureCount(10000);
+  
+  if (userThreshold) {
+    userThresholdFn(dev, samples, theApp);
+  }
+
+  
+  
   dev.setCaptureCount(nbuffers);
   dev.prepareBuffers();
   dev.captureBlock(); 
