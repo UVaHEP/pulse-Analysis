@@ -5,20 +5,33 @@ rpathLib = Dir('#/lib')
 include = Dir('#/include')
 picoscopeInclude = Dir('/opt/picoscope/include')
 picoscopeDriver = Dir('/opt/uvahep/include')
-env = Environment(LIBS=['libpicoscopeInterface', 'Spectrum', 'ps5444b', 'ps5000a'], CCFLAGS=' -ggdb  -std=c++11', CPPPATH=[include, picoscopeInclude, picoscopeDriver], LIBPATH=['#/lib', '/opt/uvahep/lib', '/opt/picoscope/lib', '.'])
 
-env.Append(RPATH = str(Dir('/opt/uvahep/lib')))
+libenv = Environment(LIBS=['Spectrum'], CCFLAGS=' -ggdb  -std=c++11  ', CPPPATH=[include], LIBPATH=['#/lib', '/opt/uvahep/lib', '/opt/picoscope/lib', '.'])
+env = Environment(LIBS=['libpicoscopeInterface', 'Spectrum', 'ps5444b', 'ps5000a','libeventHandler'], CCFLAGS=' -ggdb  -std=c++11  ', CPPPATH=[include, picoscopeInclude, picoscopeDriver], LIBPATH=['#/lib', '/opt/uvahep/lib', '/opt/picoscope/lib', '.'])
+
+env.Append(RPATH = [str(Dir('/opt/uvahep/lib')), str(Dir('#/lib'))])
+
 try:
     env.ParseConfig("root-config --cflags --libs")
+    libenv.ParseConfig("root-config --cflags --libs")
 except:
     env.PrependENVPath('PATH','~/root/bin')
 
     env.ParseConfig("root-config --cflags --libs")
+    libenv.PrependENVPath('PATH','~/root/bin')
 
-## Generate Root Dictionary File 
-cintBuilder = Builder(action = 'rootcint -f $TARGET -c $SOURCES')
+    libenv.ParseConfig("root-config --cflags --libs")
+
+
+## Generate Root Dictionary File
+### Ugly hack to get scons to do what I want with the root cint builder
+### Otherwise it doesn't find the header files >:( 
+cintBuilder = Builder(action = 'rootcint  -f $TARGET -c -I./include {0}'.format('eventHandler.h eventHandlerLinkDef.h'))
 env.Append(BUILDERS= {'cint': cintBuilder})
+eHDict = env.cint('eventHandlerDict.cc', '#/include/eventHandler.h')
+eHShared = libenv.SharedLibrary('eventHandler.so', ['eventHandlerDict.cc', 'eventHandler.cc'])
 
+env.Install('#/lib', eHShared)
 env.Alias('install','/opt/uvahep/bin')
 env.Program('darkBuffers', ['darkBuffers.cc', 'utils.cc'])
 env.Program('pulseMeasurements', ['pulseMeasurements.cc'])

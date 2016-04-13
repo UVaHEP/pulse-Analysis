@@ -7,6 +7,7 @@
 #include "TCanvas.h"
 #include "TStyle.h"
 #include "utils.h"
+#include "eventHandler.h"
 #include <TApplication.h>
 #include <getopt.h>
 #include <stdio.h>
@@ -24,14 +25,6 @@ void fitExp(TH1F *h, TString opt="L"){
 }
 
 
-void EventHandler(Int_t event, Int_t x, Int_t y, TObject *selected) {
-
-  std::cout << "Clicked" << std::endl;
-  std::cout << "X:" << x << " Y:" << y << std::endl;
-
-}
-
-
 void setupScope(ps5000a &dev,   chRange &range, int samples) { 
   dev.setChCoupling(picoscope::A, picoscope::DC);
   dev.setChRange(picoscope::A, range);
@@ -46,11 +39,12 @@ void setupScope(ps5000a &dev,   chRange &range, int samples) {
 
 }
 
-void userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
+Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
   dev.setCaptureCount(1);
   dev.prepareBuffers();
   dev.captureBlock();
   TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
+  eventHandler eH(*tc); 
   TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,15000);
   TH1F *hist = NULL;
 
@@ -80,11 +74,12 @@ void userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
   tc->Update(); 
   std::cout << "Please select the single peak threshold" << std::endl;
 
-  tc->Connect("ProcessedEvent(Int_t, Int_t, Int_t, TObject *)", 0, 0, "EventHandler(Int_t, Int_t, Int_t, TObject *)"); 
+  tc->Connect("ProcessedEvent(Int_t,Int_t, Int_t, TObject *)", "eventHandler", &eH, "eventSlot(Int_t, Int_t, Int_t, TObject *)"); 
   tc->Connect("Closed()", "TApplication", &app, "Terminate()"); 
   app.SetReturnFromRun(true); 
   app.Run(true); 
-  
+
+  return eH.threshold(); 
 
      
 
@@ -156,9 +151,9 @@ int main(int argc, char **argv) {
 
   
   if (userThreshold) {
-    userThresholdFn(dev, samples, theApp);
+    peThreshold = userThresholdFn(dev, samples, theApp);
   }
-
+  std::cout << "pe Threshold: " << peThreshold << std::endl; 
   
   
   dev.setCaptureCount(nbuffers);
