@@ -7,7 +7,6 @@
 
 eventHandler::~eventHandler() {
 
-
 }
 
 void eventHandler::print() {
@@ -18,13 +17,19 @@ void eventHandler::print() {
 
 void eventHandler::eventSlot(Int_t event, Int_t x, Int_t y, TObject *selected) {
 
+
   switch (event) {
-  case 1: { 
+  case 1: {
+    
     Double_t px;
     Double_t py;
     tc.AbsPixeltoXY(x, y, px, py);
     std::cout << "Setting Threshold to: " << py << std::endl; 
-    _threshold = py; 
+    _threshold = py;
+    m.SetX(px);
+    m.SetY(py);
+    m.Draw(); 
+    tc.Update();
 
     break; 
   }
