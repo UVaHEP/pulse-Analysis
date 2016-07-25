@@ -5,9 +5,10 @@
 #include "TF1.h"
 #include "TSpectrum.h"
 #include "TString.h"
+#include "TCanvas.h"
 
-//#define TSPECTFLOAT Float_t  // ROOT 5
-#define TSPECTFLOAT Double_t // ROOT 6
+#define TSPECTFLOAT Float_t  // ROOT 5
+//#define TSPECTFLOAT Double_t // ROOT 6
 
 
 class DarkPeaker {
@@ -39,6 +40,7 @@ private:
   TSPECTFLOAT *bkgCorrectedY;
   TSPECTFLOAT *deltaX;
   double dT;
+  TCanvas *tcD;
 };
 
 

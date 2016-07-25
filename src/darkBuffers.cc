@@ -45,7 +45,7 @@ Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
   dev.captureBlock();
   TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
   eventHandler eH(*tc); 
-  TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,15000);
+  TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,27000);
   TH1F *hist = NULL;
 
   float timebase = dev.timebaseNS();
@@ -193,11 +193,12 @@ int main(int argc, char **argv) {
   // delta time distribution
   TH1F *hdTime=new TH1F("hdTime","Delta times;x [2 ns]",101,-2.5,502.5);
   // pulse height distribution
-  TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,15000);
+  TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,27000);
   TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
   TCanvas *tc1=new TCanvas("tc1","Peaks and Time distribution",0,450,1200,400);
   tc1->Divide(2,1);
   gStyle->SetOptStat(0);
+  int totalPeaks=0;
   
   DarkPeaker *dPk = new DarkPeaker(peThreshold/2);
 
@@ -224,7 +225,8 @@ int main(int argc, char **argv) {
     // retrieve peak heights
     TSPECTFLOAT *yvals = dPk->GetBkgdCorrectedY();
     int npeaks=dPk->GetNPeaks();
-
+    totalPeaks+=npeaks;
+    
     // Fill pulse height histogram
     for (int i=0;i<npeaks;i++) hpeaks->Fill(yvals[i]);
     
@@ -262,6 +264,7 @@ int main(int argc, char **argv) {
   TH1F *hRate=new TH1F("hRate","Dark Pulse Rate;;MHz",1,-1,1);
   double meanDt = -2/hdTime->GetFunction("expo")->GetParameter(1);  // Dt in [ns]
   double rate = 1 / meanDt * 1000;  // in MHz
+  // if (rate<0) rate=??? totalPeaks...;
   std::cout << "Average dark pulse rate: " << rate << std::endl;
   double par[2];
   TF1 *fcn=hdTime->GetFunction("expo");
