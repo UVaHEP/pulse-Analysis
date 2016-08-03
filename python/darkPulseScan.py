@@ -69,9 +69,13 @@ vend=vmax
 tg=TGraphErrors()
 tg.SetTitle("Dark pulse rate vs Voltage;V;MHz")
 tga=TGraphErrors()
-tga.SetTitle("Afterpulse rate vs Voltage")
-tc=TCanvas("cgr","Pulse Data",1000,500)
-tc.Divide(2,1)
+tga.SetTitle("Afterpulse rate vs Voltage;V")
+tgb=TGraphErrors()
+tgb.SetTitle("Crosstalk fraction vs. Voltage;V")
+tgc=TGraphErrors()
+tgc.SetTitle("1PE Peak vs. Voltage;V")
+tc=TCanvas("cgr","Pulse Data",1000,1000)
+tc.Divide(2,2)
 
 #print "nsteps",nsteps
 nbuf=args.nbuf
@@ -84,7 +88,7 @@ for i in range(nsteps+1):
     # takepulses
     filename=outname+"_"+str(v)+".root"
     print "Saving data to",filename
-    subprocess.call(["darkBuffers","-qb"+str(nbuf), "-o"+filename])
+    subprocess.call(["./darkBuffers","-qb"+str(nbuf), "-o"+filename])
     tf=TFile(filename)
     darkRate=tf.Get("hRate").GetBinContent(1);
     error=tf.Get("hRate").GetBinError(1);
@@ -94,10 +98,22 @@ for i in range(nsteps+1):
     error=tf.Get("hAp").GetBinError(1);
     tga.SetPoint(tga.GetN(),v,afterRate);
     tga.SetPointError(tga.GetN()-1,0,error);
+    crossTalk=tf.Get("hCrossTalk").GetBinContent(1);
+    error=tf.Get("hCrossTalk").GetBinError(1);
+    tgb.SetPoint(tgb.GetN(),v,crossTalk);
+    tgb.SetPointError(tgb.GetN()-1,0,error);
+    pePeak=tf.Get("h1PePeak").GetBinContent(1);
+    error=tf.Get("h1PePeak").GetBinError(1);
+    tgc.SetPoint(tgc.GetN(),v,pePeak);
+    tgc.SetPointError(tgc.GetN()-1,0,error);
     tc.cd(1);
     tg.Draw("ALP*")
     tc.cd(2)
     tga.Draw("ALP*")
+    tc.cd(3);
+    tgb.Draw("ALP*")
+    tc.cd(4);
+    tgc.Draw("ALP*")
     tc.Update()
     
 subprocess.call(["setVoltage.py"])
