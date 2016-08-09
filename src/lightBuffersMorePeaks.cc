@@ -94,31 +94,45 @@ int main(int argc, char **argv) {
     }
   }
   TApplication theApp("App", &argc, argv, 0, -1);
-  
+
+  //Take the data
   setupPicoscope(dev, range, samples, nbuffers); 
-
-  
-  //for (int i = 0; i < nrepeat; i++) {
-  // std::cout << "Capturing Block:" << i << std::endl;     
   dev.captureBlock();
-     
-  // }
-
   vector <vector<short> > &data = dev.getWaveforms();
-  float timebase = dev.timebaseNS();
+  dev.close();
   
-  TH1F *hdata = NULL;
-  TH1F *hdataMv = NULL;
+  float timebase = dev.timebaseNS();
 
   LightPeaker *lPk = new LightPeaker(theshLowLimit);
 
   Int_t waveSize = data.front().size();
-  hdata = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
-  hdataMv = new TH1F("hdataMv","Pulses in mV", waveSize, 0, waveSize);
+  TH1F *hdata = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
+  TH1F *hdataMv = new TH1F("hdataMv","Pulses in mV", waveSize, 0, waveSize);
 
-    //Fills histogram with data: makes new histogram for each waveform
+  /*This is an attempt to make limits of the Peak Height distribution dynamic
+  (data[0]) {
+    for (int i = 0; i < waveSize; i++) {
+      hdata->SetBinContent(i, -1*waveform[i]);
+      hdataMv->SetBinContent(i,dev.adcToMv(-1*waveform[i],range));
+    }
+    if (!millivolts) {
+      int repPeakHeight = hdata->GetMaximum();
+    }
+    else {
+      int repPeakHeight = hdataMv->GetMaximum();
+    }
+  }
+  */
+
+  //This is just a test to get a histogram.
+  //Only works with bias at 57.9 and laser at 7.9
+  TH1F *hPeaksDist = new TH1F("hPeakDist","Distribution of Peak heights;mV",400,200,600);
+  int buffNum = 0;
+
+  //Fills histogram with data: makes new histogram for each waveform
   for (auto &waveform : data) {
-    
+    buffNum++;
+    std::cout << "Processing Buffer: " << buffNum << std::endl;
     for (int i = 0; i < waveform.size(); i++) {
       hdata->SetBinContent(i, -1*waveform[i]);
       hdataMv->SetBinContent(i,dev.adcToMv(-1*waveform[i],range));
@@ -132,16 +146,25 @@ int main(int argc, char **argv) {
       lPk->SetBuffer(hdataMv, timebase);
     }
 
-    lPk->Analyze();
+    //Using TSpectrum to find the peak
+    lPk->AnalyzePeaks();
+
     
+    //This object type is due to TSpectrum expecting more peaks/buff
+    //We only have 1peak/buff, and the TSpectrum is remade each time
+    //Height is always first value, as there is always only one value
+    Float_t *peakHeight = lPk->GetPositionY();
+    std::cout << "Peak height: "<< peakHeight[0] << std::endl;
+    hPeaksDist->Fill(peakHeight[0]);
+    
+    //Resets histogram to increase speed
     hdata->Reset();
     hdataMv->Reset();
 
   }
-
-
+  
   TFile *f = new TFile(outfn, "RECREATE");  
-  dev.close();
+  //dev.close(); This is original location of this statement
 
   
   TCanvas *tc=new TCanvas("tc","Information about Pulses",1200,400);
@@ -151,7 +174,8 @@ int main(int argc, char **argv) {
   hdataMv->DrawCopy();
   tc->cd(2);
   hdata->DrawCopy();
-  
+  tc->cd(3);
+  hPeaksDist->DrawCopy();
      
   f->Close();
 
