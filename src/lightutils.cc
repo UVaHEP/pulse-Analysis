@@ -94,7 +94,7 @@ void LightPeaker::FindThreshold(){
   //right now, these histograms are not being used.
   //staying defined because I will probably think of a better way to select the threshold
   //background subtracted sample data
-  hdist=new TH1F("hdist","Pulse Height Distribution",
+  /*  hdist=new TH1F("hdist","Pulse Height Distribution",
 		       100,0,buf->GetMaximum());
   hscan=new TH1F ("hscan","Threshold scan",50,0,buf->GetBinContent(buf->GetMaximumBin()));
   for (int i = 1; i <= buf->GetNbinsX(); i++){
@@ -104,13 +104,13 @@ void LightPeaker::FindThreshold(){
       if (val > hscan->GetBinLowEdge(b))
 	hscan->SetBinContent(b,hscan->GetBinContent(b)+1);
     }
-  }		 
+    }*/		 
   
   _peThreshold = maxHeightBkgCorrected*.5;//only want the highest peaks
   
 
-    std::cout <<
-      "Estimate threshold for many peak threshold as:  "<< _peThreshold << std::endl;
+  //    std::cout <<
+  //    "Estimate threshold for many peak threshold as:  "<< _peThreshold << std::endl;
     
 
 }

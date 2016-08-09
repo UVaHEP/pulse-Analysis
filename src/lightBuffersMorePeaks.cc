@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
 
   ps5000a dev;
   chRange range = PS_1V;//range on picoscope, will capture amplitudes over 100pe
-  int samples = 1000;   // number of samples per waveform
+  int samples = 500;   // number of samples per waveform
   int nbuffers=10000;   // number of waveforms per capture cycle
   int nrepeat=5;        // number of capture cycles
   int xlow=samples/2;   // starting point for pulse integral
@@ -97,36 +97,54 @@ int main(int argc, char **argv) {
   
   setupPicoscope(dev, range, samples, nbuffers); 
 
-
-  for (int i = 0; i < nrepeat; i++) {
-     std::cout << "Capturing Block:" << i << std::endl;     
-     dev.captureBlock();
-  }
   
+  //for (int i = 0; i < nrepeat; i++) {
+  // std::cout << "Capturing Block:" << i << std::endl;     
+  dev.captureBlock();
+     
+  // }
+
+  vector <vector<short> > &data = dev.getWaveforms();
+  float timebase = dev.timebaseNS();
+  
+  TH1F *hdata = NULL;
+  TH1F *hdataMv = NULL;
+
+  LightPeaker *lPk = new LightPeaker(theshLowLimit);
+
+  Int_t waveSize = data.front().size();
+  hdata = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
+  hdataMv = new TH1F("hdataMv","Pulses in mV", waveSize, 0, waveSize);
+
+    //Fills histogram with data: makes new histogram for each waveform
+  for (auto &waveform : data) {
+    
+    for (int i = 0; i < waveform.size(); i++) {
+      hdata->SetBinContent(i, -1*waveform[i]);
+      hdataMv->SetBinContent(i,dev.adcToMv(-1*waveform[i],range));
+    }
+
+    //Prepares analyzer and picks units
+    if (!millivolts) {
+      lPk->SetBuffer(hdata, timebase);
+    }
+    else {
+      lPk->SetBuffer(hdataMv, timebase);
+    }
+
+    lPk->Analyze();
+    
+    hdata->Reset();
+    hdataMv->Reset();
+
+  }
+
+
+  TFile *f = new TFile(outfn, "RECREATE");  
   dev.close();
 
   
-  TFile *f = new TFile(outfn, "RECREATE");
-  
-  vector <vector<short> > &data = dev.getWaveforms();
-  float timebase = dev.timebaseNS();
-
-   TH1F *hdata = NULL;
-   TH1F *hdataMv = NULL;
-
-   LightPeaker *lPk = new LightPeaker(theshLowLimit);
-
-    //Fills histogram with data: makes new histogram for each waveform
-    for (auto &waveform : data) {
-      for (int i = 0; i < waveform.size(); i++) {
-	hdata = new TH1F("hdata","The Pulses", waveform.size(), 0, waveform.size());
-	hdataMv = new TH1F("hdataMv","Pulses in mV", dev.adcToMv(waveform.size(),range), 0, dev.adcToMv(waveform.size(),range));
-	hdata->SetBinContent(i, -1*waveform[i]);
-	hdataMv->SetBinContent(dev.adcToMv(i,range),dev.adcToMv(-1*waveform[i],range));
-      }
-    }
-
-  TCanvas *tc=new TCanvas("tc","Pulse heights",1200,400);
+  TCanvas *tc=new TCanvas("tc","Information about Pulses",1200,400);
   tc->Divide(3,1);
   gStyle->SetOptStat(0);
   tc->cd(1);
@@ -134,28 +152,10 @@ int main(int argc, char **argv) {
   tc->cd(2);
   hdata->DrawCopy();
   
-    //Prepares analyzer, decides units
-    if (millivolts = false){
-      lPk->SetBuffer(hdata,timebase);
-    }
-    else {
-      lPk->SetBuffer(hdataMv,timebase);
-    }
-    
-  lPk->AnalyzePeaks();
-  //Need to analyze
-  
-  //TCanvas *tc=new TCanvas("tc","Pulse heights",1200,400);
-  //tc->Divide(3,1);
-  //gStyle->SetOptStat(0);
-  //tc->cd(1);
-  //hdataMv->Draw();
-  //tc->cd(2);
-  //hdata->Draw();
-    
+     
   f->Close();
 
-  std::cout<< "Close TCanvas to exit" << std::endl;
+  std::cout<< "Close TCanvas: Information about Pulses to exit" << std::endl;
   tc->Connect("TCanvas","Closed()","TApplication",gApplication,"Terminate()");
   theApp.Run(true);
   
