@@ -22,19 +22,17 @@ class bcolors:
 parser = argparse.ArgumentParser(description='Take light pulse data')
 
 parser.add_argument('-v','--voltage', type=float, default = 0,
-                    help="starting voltage")
-parser.add_argument('-s','--nsteps', type=int, default=0,
-                    help="number of voltage steps")
-parser.add_argument('-S','--stepsize', type=float, default = 0.0,
-                    help="size of voltage steps")
-parser.add_argument('-x', '--vmax', type=float, default = 0,
-                    help="max voltage")
+                    help="voltage applied for pulses")
 parser.add_argument('-0', '--zero', action='store_true',
                     help="zero voltage measure")
-parser.add_argument('-o', '--output', type=str, default = "lightPulseScans",
+parser.add_argument('-o', '--output', type=str, default = "lightPulseScans_defaultFileName",
                     help="outputfile template")
-parser.add_argument('-b', '--nbuf', type=int, default = 5,
+parser.add_argument('-b', '--nbuf', type=int, default = 10000,
                     help="number of buffers to take [5]")
+parser.add_argument('-I','--IntensitySteps', type=int, default = 0,
+                    help="one less than the number of different intensities you plan to take")
+#the way to get output in ADC currently cannot be called from here.
+#Everything is labeled in mV anyway and I didn't feel like changing it
 args = parser.parse_args()
 
 from ROOT import *
@@ -47,54 +45,44 @@ if args.zero: voltage=0
 if  args.voltage<=0:
     print "Invalid voltage given:",args.voltage
     sys.exit()
-vmax=args.vmax
 outname=args.output
 
-nsteps = args.nsteps
-stepsize = args.stepsize
+tg=TGraphErrors()
+tg.SetTitle("Sigma/Mean vs. Mean at several intensities;mean (mV);sigma/mean")
+tg2=TGraphErrors()
+tg2.SetTitle("Mean vs. Intensity; Laser Intensity: Mean (mV)")
+tc=TCanvas("tc","Peak height Distribution data",900,450)
+tc.Divide(2,1)
 
-
-if nsteps>0:
-    if vmax>0: stepsize=float(vmax-voltage)/nsteps
-    elif stepsize==0:
-        print "Can't determine voltage steps"
-        sys.exit()
-elif stepsize>0 and vmax>0:
-    nsteps=int(round(float(vmax-voltage)/stepsize))
-    
-
-#loop over voltages
-vend=vmax
-
-#tg=TGraphErrors()
-#g.SetTitle("Dark pulse rate vs Voltage;V;MHz")
-#tc=TCanvas("cgr","Pulse Data",1000,1000)
-#tc.Divide(2,2)
-
-#print "nsteps",nsteps
 nbuf=args.nbuf
+inten_steps = args.IntensitySteps
 
-for i in range(nsteps+1):
-    v=round(voltage+i*stepsize,3)
-    print bcolors.HEADER+"\nStarting data at V= "+str(v)+bcolors.ENDC
+for i in range(inten_steps+1):
+    print bcolors.HEADER+"\nPlease go to the laser and set an intensity"+bcolors.ENDC
+    print bcolors.HEADER+"\nPlease record the intensity (user input): "+bcolors.ENDC
+    inten_level = raw_input()
+    print bcolors.HEADER+"\nYour intensity is "+str(inten_level)+bcolors.ENDC
     # set voltage
-    subprocess.call(["setVoltage.py","-pqv"+str(v)])
-    # takepulses
-    filename=outname+"_"+str(v)+".root"
-    print "Saving data to",filename
-    subprocess.call(["./lightBuffersMorePeaks","-qb"+str(nbuf), "-o"+filename])
-   # tf=TFile(filename)
-   # darkRate=tf.Get("hRate").GetBinContent(1);
-   # error=tf.Get("hRate").GetBinError(1);
-   # tg.SetPoint(tg.GetN(),v,darkRate);
-   # tg.SetPointError(tg.GetN()-1,0,error);
-   # tc.cd(1);
-   # tg.Draw("ALP*")
-   # tc.Update()
-    
-subprocess.call(["setVoltage.py","-p"])
+    subprocess.call(["setVoltage.py","-pqv"+str(voltage)])
+    filename=outname+"_inten"+str(inten_level)+"_"+str(voltage)+"V.root"
+    #take pulses
+    subprocess.call(["./lightBuffersMorePeaks","-b"+str(nbuf), "-o"+filename])
+    # Create the graph of sigma/mean
+    tf=TFile(filename)
+    sigma_over_mean = tf.Get("hSigmaOMean").GetBinContent(1);
+    mean_peak_height = tf.Get("hMeanPeakHeight").GetBinContent(1);
+    tg.SetPoint(tg.GetN(),mean_peak_height,sigma_over_mean);
+    tg2.SetPoint(tg2.GetN(),float(inten_level),mean_peak_height);
+    tc.cd(1);
+    tg.Draw("ALP*")
+    tc.cd(2);
+    tg2.Draw("ALP*")
+    tc.Update()
+    print bcolors.WARNING+"When done, turn off the laser, peasant."+bcolors.ENDC
+
+subprocess.call(["setVoltage.py"])
 
 time.sleep(2)
-#tc.SaveAs(outname+".pdf")
+tc.SaveAs(outname+".pdf")
 
 

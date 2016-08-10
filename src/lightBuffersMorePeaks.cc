@@ -34,41 +34,52 @@ void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers) {
   dev.prepareBuffers();  
 }
 
+//Captures height of first buffer to be used to set limits on the ranges of subsequent histograms
+int estimateDistLimits(vector <vector<short> > &d, bool volts, chRange range, ps5000a &dev) {
+  int topOfFirstPulse;
+  Int_t waveSize = d.front().size();
+  TH1F* h1 = new TH1F("h1","First Pulse", waveSize, 0, waveSize);
+  TH1F* h2 = new TH1F("h2","First Pulse", waveSize, 0, waveSize);
+  for (auto &waveform : d.front()) {
+    for (int i = 0; i < d.front().size(); i++){
+      h1->SetBinContent(i, -1*d.front()[i]);
+      h2->SetBinContent(i,dev.adcToMv(-1*d.front()[i],range));
+    }
+    if (!volts) {
+      topOfFirstPulse = h1->GetMaximum();
+    }
+    else {
+      topOfFirstPulse = h2->GetMaximum();
+    }
+  }
+
+   return topOfFirstPulse;
+}
 
 int main(int argc, char **argv) {
 
   ps5000a dev;
-  chRange range = PS_1V;//range on picoscope, will capture amplitudes over 100pe
-  int samples = 500;   // number of samples per waveform
-  int nbuffers=10000;   // number of waveforms per capture cycle
-  int nrepeat=5;        // number of capture cycles
-  int xlow=samples/2;   // starting point for pulse integral
-  int xwid=15;          // bins to integrate
+  chRange range = PS_1V;   //range on picoscope, will capture amplitudes over 100pe
+  int samples = 500;       // number of samples per waveform
+  int nbuffers = 10000;    // number of waveforms per capture cycle
+  int xlow = samples/2;    // starting point for pulse integral
+  int xwid = 15;           // bins to integrate
   double theshLowLimit = 0;//just so it works in LightPeaker
   int opt;
-  bool millivolts = true;//uses mV not ADC for analysis and output
-  bool quit=false;
-  bool quiet=false;
-  TString outfn="lightPulseMeasurement_defaultFileName.root";
+  bool millivolts = true;  //uses mV not ADC for analysis and output
+  bool quit = false;
+  bool quiet = false;
+  TString outfn = "lightPulseMeasurement_defaultFileName.root";
   
-  while ((opt = getopt(argc, argv, "b:c:S:n:o:hq0x:w:z:u")) != -1) {
+  while ((opt = getopt(argc, argv, "b:o:hq0x:w:z:u")) != -1) {
     switch (opt) {
     case 'b':
       nbuffers=atoi(optarg);
       break;
-    case 'c':
-      nrepeat=atoi(optarg);
-      break;
-      //    case 'S':
-      //nsave=atoi(optarg);
-      //break;
     case 'o':
       outfn = optarg;
       std::cout<<"set outfn " << outfn<<std::endl;
       break;
-      //case 'z':
-      //z0=atoi(optarg);
-      //break;
     case 'x':
       xlow=atoi(optarg);
       break;
@@ -86,7 +97,7 @@ int main(int argc, char **argv) {
       break;
     default: /* '?' */
       fprintf(stderr, "Usage: %s",argv[0]);
-      fprintf(stderr, "-b nbuffers[10000] -c nrepeat[5] -w nsave[20] -o output[darkBuffers.root]\n");
+      fprintf(stderr, "-b nbuffers[10000] -w bins to integrate -o output[lightPulseMeasurement_defaultFileName.root\n");
       fprintf(stderr, "-x starting bin of pulse integral[50]\n");
       fprintf(stderr, "-q exit when finished\n");
       fprintf(stderr, "-u use ADC instead of default mV\n");
@@ -109,24 +120,13 @@ int main(int argc, char **argv) {
   TH1F *hdata = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
   TH1F *hdataMv = new TH1F("hdataMv","Pulses in mV", waveSize, 0, waveSize);
 
-  /*This is an attempt to make limits of the Peak Height distribution dynamic
-  (data[0]) {
-    for (int i = 0; i < waveSize; i++) {
-      hdata->SetBinContent(i, -1*waveform[i]);
-      hdataMv->SetBinContent(i,dev.adcToMv(-1*waveform[i],range));
-    }
-    if (!millivolts) {
-      int repPeakHeight = hdata->GetMaximum();
-    }
-    else {
-      int repPeakHeight = hdataMv->GetMaximum();
-    }
-  }
-  */
-
-  //This is just a test to get a histogram.
-  //Only works with bias at 57.9 and laser at 7.9
-  TH1F *hPeaksDist = new TH1F("hPeakDist","Distribution of Peak heights;mV",400,200,600);
+  
+  //Estimate limits, prepare peak distribution histogram
+  int repPeakHeight = estimateDistLimits(data, millivolts, range, dev);
+  TH1F *hPeaksDist = new TH1F("hPeakDist","Distribution of Peak heights;mV",repPeakHeight,repPeakHeight/2,repPeakHeight+repPeakHeight/2);
+  TH1F *hSigmaOMean = new TH1F("hSigmaOMean","Sigma/Mean Value",1,-1,1);
+  TH1F *hMeanPeakHeight = new TH1F("hMeanPeakHeight","Mean Value;; mV",1,-1,1);
+  TH1F *hSigmaPeakHeight = new TH1F("hSigmaPeakHeight","Sigma for Peak Distribution",1,-1,1);
   int buffNum = 0;
 
   //Fills histogram with data: makes new histogram for each waveform
@@ -148,35 +148,44 @@ int main(int argc, char **argv) {
 
     //Using TSpectrum to find the peak
     lPk->AnalyzePeaks();
-
     
     //This object type is due to TSpectrum expecting more peaks/buff
     //We only have 1peak/buff, and the TSpectrum is remade each time
     //Height is always first value, as there is always only one value
-    Float_t *peakHeight = lPk->GetPositionY();
-    std::cout << "Peak height: "<< peakHeight[0] << std::endl;
+    Float_t *peakHeight = lPk->GetBkgdCorrectedY();
     hPeaksDist->Fill(peakHeight[0]);
     
-    //Resets histogram to increase speed
+    //Resets histogram to increase speed, fix memory leak
     hdata->Reset();
     hdataMv->Reset();
 
   }
+
+  TF1 *hPeaksDistFit = new TF1("hPeaksDistFit","gaus",repPeakHeight/2,repPeakHeight+repPeakHeight/2);
+  hPeaksDist->Fit("hPeaksDistFit","","",repPeakHeight/2,repPeakHeight+repPeakHeight/2);
+  
+  double meanPeakHeight = hPeaksDistFit->GetParameter(1);
+  double sigmaPeakHeight = hPeaksDistFit->GetParameter(2);
+  double sigmaOmean = sigmaPeakHeight/meanPeakHeight;
+  hSigmaOMean->SetBinContent(1,sigmaOmean);
+  hMeanPeakHeight->SetBinContent(1,meanPeakHeight);
+  hSigmaPeakHeight->SetBinContent(1,sigmaPeakHeight);
   
   TFile *f = new TFile(outfn, "RECREATE");  
-  //dev.close(); This is original location of this statement
 
-  
   TCanvas *tc=new TCanvas("tc","Information about Pulses",1200,400);
-  tc->Divide(3,1);
+  tc->Divide(2,1);
   gStyle->SetOptStat(0);
   tc->cd(1);
-  hdataMv->DrawCopy();
-  tc->cd(2);
-  hdata->DrawCopy();
-  tc->cd(3);
   hPeaksDist->DrawCopy();
-     
+  tc->cd(2);
+  hSigmaOMean->DrawCopy();
+  
+  hPeaksDist->Write();
+  hSigmaOMean->Write();
+  hMeanPeakHeight->Write();
+  hSigmaPeakHeight->Write();
+  
   f->Close();
 
   std::cout<< "Close TCanvas: Information about Pulses to exit" << std::endl;
