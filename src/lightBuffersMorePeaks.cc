@@ -9,6 +9,7 @@
 #include <TCanvas.h>
 #include <TStyle.h>
 #include <iostream>
+#include <algorithm>
 #include <getopt.h>
 #include <stdio.h>
 
@@ -34,28 +35,64 @@ void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers) {
   dev.prepareBuffers();  
 }
 
-//Captures height of first buffer to be used to set limits on the ranges of subsequent histograms
-int estimateDistLimits(vector <vector<short> > &d, bool volts, chRange range, ps5000a &dev) {
-  int topOfFirstPulse;
-  Int_t waveSize = d.front().size();
-  TH1F* h1 = new TH1F("h1","First Pulse", waveSize, 0, waveSize);
-  TH1F* h2 = new TH1F("h2","First Pulse", waveSize, 0, waveSize);
-  for (auto &waveform : d.front()) {
-    for (int i = 0; i < d.front().size(); i++){
-      h1->SetBinContent(i, -1*d.front()[i]);
-      h2->SetBinContent(i,dev.adcToMv(-1*d.front()[i],range));
-    }
-    if (!volts) {
-      topOfFirstPulse = h1->GetMaximum();
-    }
-    else {
-      topOfFirstPulse = h2->GetMaximum();
-    }
+//Uses a rough estimate of mean as a basis for histogram and fit limits
+int baseDistLimits(Float_t *heights, int nbuffers) {
+  int maximum = 0;
+  int minimum = maximum;
+  int roughMiddle = 0;
+  for (int i =0; i < nbuffers; i++) {
+    if (heights[i] > maximum){
+      maximum = heights[i];
+	}
   }
-
-   return topOfFirstPulse;
+  return maximum;
 }
 
+//Trying to make a function to make it easier to interact with the heights
+
+LightPeaker *lPk = new LightPeaker(0);
+
+//Gets peak heights
+//does not reutrn a list or array or whatever of the peak heights. Returns one
+Float_t* getPeakHeights(vector <vector<short> > &d, bool volts, chRange range, ps5000a &dev,int nbuffers) {
+  Float_t *peakHeight;
+  Int_t waveSize = d.front().size();
+  float timebase = dev.timebaseNS();
+  int buffNum = 0;
+  TSPECTFLOAT *peakHeights;
+  TH1F *hdata = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
+  TH1F *hdataMv = new TH1F("hdataMv","Pulses in mV", waveSize, 0, waveSize);
+  peakHeights = new TSPECTFLOAT[nbuffers];
+
+  for (auto &waveform : d) {
+    buffNum++;
+    std::cout << "Processing Buffer: " << buffNum << std::endl;
+    for (int i = 0; i < waveform.size(); i++) {
+      hdata->SetBinContent(i, -1*waveform[i]);
+      hdataMv->SetBinContent(i,dev.adcToMv(-1*waveform[i],range));
+    }
+
+    //Prepares analyzer and picks units
+    if (!volts) {
+      lPk->SetBuffer(hdata, timebase);
+    }
+    else {
+      lPk->SetBuffer(hdataMv, timebase);
+    }
+
+    lPk->AnalyzePeaks();
+    peakHeight = lPk->GetBkgdCorrectedY();
+
+    peakHeights[buffNum-1] = peakHeight[0];
+
+    hdata->Reset();
+    hdataMv->Reset();
+  }
+
+  return peakHeights;
+}
+   
+  
 int main(int argc, char **argv) {
 
   ps5000a dev;
@@ -114,55 +151,22 @@ int main(int argc, char **argv) {
   
   float timebase = dev.timebaseNS();
 
-  LightPeaker *lPk = new LightPeaker(theshLowLimit);
+  Float_t *heightOfPeaks = getPeakHeights(data,millivolts,range,dev,nbuffers);
+  int repPeakHeight = baseDistLimits(heightOfPeaks,nbuffers);
 
-  Int_t waveSize = data.front().size();
-  TH1F *hdata = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
-  TH1F *hdataMv = new TH1F("hdataMv","Pulses in mV", waveSize, 0, waveSize);
-
-  
   //Estimate limits, prepare peak distribution histogram
-  int repPeakHeight = estimateDistLimits(data, millivolts, range, dev);
-  TH1F *hPeaksDist = new TH1F("hPeakDist","Distribution of Peak heights;mV",repPeakHeight,repPeakHeight/2,repPeakHeight+repPeakHeight/2);
+  TH1F *hPeaksDist = new TH1F("hPeakDist","Distribution of Peak heights;mV",repPeakHeight,repPeakHeight-repPeakHeight*.75,repPeakHeight+repPeakHeight*0.10) ;
   TH1F *hSigmaOMean = new TH1F("hSigmaOMean","Sigma/Mean Value",1,-1,1);
   TH1F *hMeanPeakHeight = new TH1F("hMeanPeakHeight","Mean Value;; mV",1,-1,1);
   TH1F *hSigmaPeakHeight = new TH1F("hSigmaPeakHeight","Sigma for Peak Distribution",1,-1,1);
-  int buffNum = 0;
 
-  //Fills histogram with data: makes new histogram for each waveform
-  for (auto &waveform : data) {
-    buffNum++;
-    std::cout << "Processing Buffer: " << buffNum << std::endl;
-    for (int i = 0; i < waveform.size(); i++) {
-      hdata->SetBinContent(i, -1*waveform[i]);
-      hdataMv->SetBinContent(i,dev.adcToMv(-1*waveform[i],range));
-    }
+  for (int i = 0; i < nbuffers; i++) {
+    hPeaksDist->Fill(heightOfPeaks[i]);
+      }
 
-    //Prepares analyzer and picks units
-    if (!millivolts) {
-      lPk->SetBuffer(hdata, timebase);
-    }
-    else {
-      lPk->SetBuffer(hdataMv, timebase);
-    }
-
-    //Using TSpectrum to find the peak
-    lPk->AnalyzePeaks();
-    
-    //This object type is due to TSpectrum expecting more peaks/buff
-    //We only have 1peak/buff, and the TSpectrum is remade each time
-    //Height is always first value, as there is always only one value
-    Float_t *peakHeight = lPk->GetBkgdCorrectedY();
-    hPeaksDist->Fill(peakHeight[0]);
-    
-    //Resets histogram to increase speed, fix memory leak
-    hdata->Reset();
-    hdataMv->Reset();
-
-  }
-
-  TF1 *hPeaksDistFit = new TF1("hPeaksDistFit","gaus",repPeakHeight/2,repPeakHeight+repPeakHeight/2);
-  hPeaksDist->Fit("hPeaksDistFit","","",repPeakHeight/2,repPeakHeight+repPeakHeight/2);
+  
+  TF1 *hPeaksDistFit = new TF1("hPeaksDistFit","gaus",repPeakHeight-repPeakHeight*.75,repPeakHeight+repPeakHeight*0.10);
+  hPeaksDist->Fit("hPeaksDistFit","","",repPeakHeight-repPeakHeight*.75,repPeakHeight+repPeakHeight*0.10);
   
   double meanPeakHeight = hPeaksDistFit->GetParameter(1);
   double sigmaPeakHeight = hPeaksDistFit->GetParameter(2);
@@ -185,6 +189,7 @@ int main(int argc, char **argv) {
   hSigmaOMean->Write();
   hMeanPeakHeight->Write();
   hSigmaPeakHeight->Write();
+  
   
   f->Close();
 

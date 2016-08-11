@@ -8,7 +8,6 @@ using std::cout;
 using std::endl;
 
 
-
 LightPeaker::LightPeaker(double peThreshold){
   tspectrum=new TSpectrum(5000,2);
   buf=0;
@@ -16,7 +15,7 @@ LightPeaker::LightPeaker(double peThreshold){
   bkgCorrectedY=0;
   hdist=0;
   if (peThreshold) _peThreshold=peThreshold;
-  tcD = new TCanvas("tcD","Dark Peak Analysis"); 
+  //  tcD = new TCanvas("tcD","Light Peak Analysis"); 
 }
 
 void LightPeaker::SetBuffer(TH1F *newbuf, double sampleTime){
@@ -37,6 +36,7 @@ int LightPeaker::GetNPeaks(){return npeaks;}
 TH1F* LightPeaker::GetBackground(){return hbkg;}
 TSPECTFLOAT* LightPeaker::GetPositionX(){ return tspectrum->GetPositionX();}
 TSPECTFLOAT* LightPeaker::GetPositionY(){ return tspectrum->GetPositionY();}
+
 TSPECTFLOAT* LightPeaker::GetBkgdCorrectedY(){
   if (bkgCorrectedY) return bkgCorrectedY;
   bkgCorrectedY = new TSPECTFLOAT[npeaks];
@@ -69,12 +69,14 @@ int LightPeaker::AnalyzePeaks(){
   npeaks=tspectrum->Search(buf,sigma,"nobackground,noMarkov,nodraw",threshold);
   //npeaks=tspectrum->Search(buf,sigma,"nomarkov,nodraw",threshold);
   //int npeaks=tspectrum->Search(buf,sigma,"nomarkov",threshold);
-  cout << "Found " << npeaks << " peaks" << endl;
+  //cout << "Found " << npeaks << " peaks" << endl;
   return 0;
 }
 
 void LightPeaker::FindBackground(){
-  tcD->cd();
+  /* tcD = new TCanvas("tcD","Light Peak Analysis"); 
+  std::cout << "tcD's Name:" << tcD->GetName() << std::endl;
+  tcD->cd();*/
   int nbins=buf->GetNbinsX();
   TSPECTFLOAT *bksource=new TSPECTFLOAT[nbins];
   for (int i = 0; i < nbins; i++) bksource[i]=buf->GetBinContent(i + 1);
@@ -109,11 +111,7 @@ void LightPeaker::FindThreshold(){
   _peThreshold = maxHeightBkgCorrected*.5;//only want the highest peaks
   
 
-  //    std::cout <<
-  //    "Estimate threshold for many peak threshold as:  "<< _peThreshold << std::endl;
-    
-
-}
+ }
 
 
 
