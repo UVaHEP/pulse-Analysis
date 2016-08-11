@@ -51,8 +51,10 @@ tg=TGraphErrors()
 tg.SetTitle("Sigma/Mean vs. Mean at several intensities;mean (mV);sigma/mean")
 tg2=TGraphErrors()
 tg2.SetTitle("Mean vs. Intensity; Laser Intensity: Mean (mV)")
-tc=TCanvas("tc","Peak height Distribution data",900,450)
-tc.Divide(2,1)
+tg3=TGraphErrors()
+tg3.SetTitle("Sigma/Mean vs. Intensity; Intensity")
+tc=TCanvas("tc","Peak height Distribution data",1350,450)
+tc.Divide(3,1)
 
 nbuf=args.nbuf
 inten_steps = args.IntensitySteps
@@ -73,12 +75,15 @@ for i in range(inten_steps+1):
     mean_peak_height = tf.Get("hMeanPeakHeight").GetBinContent(1);
     tg.SetPoint(tg.GetN(),mean_peak_height,sigma_over_mean);
     tg2.SetPoint(tg2.GetN(),float(inten_level),mean_peak_height);
+    tg3.SetPoint(tg3.GetN(),float(inten_level),sigma_over_mean);
     tc.cd(1);
     tg.Draw("ALP*")
     tc.cd(2);
     tg2.Draw("ALP*")
+    tc.cd(3);
+    tg3.Draw("ALP*")
     tc.Update()
-    print bcolors.WARNING+"When done, turn off the laser, peasant."+bcolors.ENDC
+    print bcolors.WARNING+"When done, turn off the laser... peasant!"+bcolors.ENDC
 
 subprocess.call(["setVoltage.py"])
 
