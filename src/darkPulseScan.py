@@ -76,8 +76,12 @@ tgb=TGraphErrors()
 tgb.SetTitle("Crosstalk fraction vs. Voltage;V")
 tgc=TGraphErrors()
 tgc.SetTitle("1PE Peak vs. Voltage;V")
-tc=TCanvas("cgr","Pulse Data",1000,1000)
-tc.Divide(2,2)
+tgd=TGraphErrors()
+tgd.SetTitle("Sigma/Mean vs. Mean")
+tge=TGraphErrors()
+tge.SetTitle("Sigma/mean vs. Voltage;V")
+tc=TCanvas("cgr","Pulse Data",1500,1000)
+tc.Divide(3,2)
 
 #print "nsteps",nsteps
 nbuf=args.nbuf
@@ -109,6 +113,9 @@ for i in range(nsteps+1):
     error=tf.Get("h1PePeak").GetBinError(1);
     tgc.SetPoint(tgc.GetN(),v,pePeak);
     tgc.SetPointError(tgc.GetN()-1,0,error);
+    sigmaOmean=tf.Get("hSigmaOMean").GetBinContent(1);
+    tgd.SetPoint(tgd.GetN(),pePeak,sigmaOmean);
+    tge.SetPoint(tgd.GetN(),v,sigmaOmean);
     tc.cd(1);
     tg.Draw("ALP*")
     tc.cd(2)
@@ -117,9 +124,13 @@ for i in range(nsteps+1):
     tgb.Draw("ALP*")
     tc.cd(4);
     tgc.Draw("ALP*")
+    tc.cd(5);
+    tgd.Draw("ALP*")
+    tc.cd(6);
+    tge.Draw("ALP*")
     tc.Update()
     
-subprocess.call(["setVoltage.py","-p"])
+subprocess.call(["setVoltage.py"])
 
 time.sleep(2)
 tc.SaveAs(outname+".pdf")

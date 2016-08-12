@@ -224,7 +224,7 @@ int main(int argc, char **argv) {
     TIter nextkey(gDirectory->GetListOfKeys());
     TKey *key;
     vector<short> buf;
-    timebase= ((TH1F*)(infile.Get("dT")))->GetBinContent(1);
+    timebase = ((TH1F*)(infile.Get("dT")))->GetBinContent(1);
     while ( (key = (TKey*)nextkey()) ) {
       TObject *obj = key->ReadObj();
       if ( TString(obj->GetName())=="pulses" ){
@@ -413,41 +413,68 @@ int main(int argc, char **argv) {
   hpeaks->Fit("peaksFit","","",0,xendPeaksFit);
   hpeaks->DrawCopy();
   double meanhPeaks = peaksFit->GetParameter(1);
+  double meanhPeakmV = dev.adcToMv(meanhPeaks,range);
   double uncMeanhPeaks = peaksFit->GetParError(1);
   double sigmahPeaks = peaksFit->GetParameter(2);
   double uncSigmahPeaks = peaksFit->GetParError(2);
+  double sigmaOmeanhPeaks = sigmahPeaks/meanhPeaks;
 
   //calculate Crosstalk fraction. Crosstalk peaks are what wasn't fitted
   double crosstalkFraction = 0;
   double crosstalkPeaks = 0;
-  crosstalkPeaks = (totalPeaks-peaksFit->Integral(0,xmaxPeaks)/hpeaks->GetBinWidth(1));
+  double ourcrosstalkPeaks = 0;
+  double ourcrosstalkFraction = 0;
+  
+  ourcrosstalkPeaks = (totalPeaks-peaksFit->Integral(0,xmaxPeaks)/hpeaks->GetBinWidth(1));
+  ourcrosstalkFraction = ourcrosstalkPeaks/totalPeaks;
+
+  for (int i = 1; i<=hpeaks->GetNbinsX();i++){
+    if (hpeaks->GetBinCenter(i)>=meanhPeaks*1.5){
+    crosstalkPeaks+=hpeaks->GetBinContent(i);
+    }
+  }
   crosstalkFraction = crosstalkPeaks/totalPeaks;
   
-  //Save the Crosstalk Fraction
+  //Save the Crosstalk Fraction (lightspin way)
   TH1F *hCrossTalk = new TH1F("hCrossTalk","Crosstalk Fraction",1,-1,1);
   hCrossTalk->SetBinContent(1,crosstalkFraction);
   //Error in Crosstalk Fraction. Sqrt(multi-photon peaks)~sigma of the crosstalk/totalPeaks
   hCrossTalk->SetBinError(1,sqrt(crosstalkPeaks)/totalPeaks);
   hCrossTalk->Write();
 
+  //Save crosstalk fraction our way
+  TH1F *hOurMethodCrossTalk = new TH1F("hOurMethodCrossTalk","CrossTalk Fraction by subtracting 1Pe Peak",1,-1,1);
+  hOurMethodCrossTalk->SetBinContent(1,ourcrosstalkFraction);
+  hOurMethodCrossTalk->Write();
+  
   //Save mean of 1PE peak
   TH1F *h1PePeak = new TH1F("h1PePeak","1 PE Peak Mean Value",1,-1,1);
   h1PePeak->SetBinContent(1,meanhPeaks);
   h1PePeak->SetBinError(1,uncMeanhPeaks);
   h1PePeak->Write();
-
+  TH1F *h1PePeakmV = new TH1F("h1PePeakmV","1 PE Peak Mean Value, mV",1,-1,1);
+  h1PePeakmV->SetBinContent(1,meanhPeakmV);
+  h1PePeakmV->Write();
+  
   //Save sigma of 1Pe peak
   TH1F *h1PePeakSigma = new TH1F("h1PePeakSigma","1 PE Peak Sigma Value",1,-1,1);
   h1PePeakSigma->SetBinContent(1,sigmahPeaks);
   h1PePeakSigma->SetBinError(1,uncSigmahPeaks);
   h1PePeakSigma->Write();
-    
+
+  //Save sigma/1Pe peak
+  TH1F *hSigmaOMean = new TH1F("hSigmaOMean","Sigma/Mean",1,-1,1);
+  hSigmaOMean->SetBinContent(1,sigmaOmeanhPeaks);
+  hSigmaOMean->Write();
+  
   f.Close();
  
   std::cout << "===============================" << std::endl;
   std::cout << "Fit for dark pulse rate: " << rate << " MHz" << std::endl;
   std::cout << "Afterpulse probability:  " << aPrate << std::endl;
-  std::cout << "Crosstalk Fraction: " << crosstalkFraction << std::endl;
+  std::cout << "Crosstalk Fraction (lightspin method): " << crosstalkFraction << std::endl;
+  //std::cout << "Our crosstalk fraction method: : "<< ourcrosstalkFraction <<std::endl;
+  std::cout << "1Pe Peak value (mV): " << meanhPeakmV << std::endl;
   std::cout << "===============================" << std::endl;
   
   if (quit) return 0;
