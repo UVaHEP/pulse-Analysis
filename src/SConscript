@@ -39,3 +39,4 @@ env.Program('pulseMeasurements', ['pulseMeasurements.cc'])
 ##Grace E. Cummings added to test new scripts
 env.Program('pulseMeasurementMorePeaks',['pulseMeasurementsMorePeaks.cc'])
 env.Program('lightBuffersMorePeaks',['lightBuffersMorePeaks.cc','lightutils.cc'])
+env.Program('testOpt',['test.cc'])

@@ -31,6 +31,8 @@ parser.add_argument('-b', '--nbuf', type=int, default = 10000,
                     help="number of buffers to take [10000]")
 parser.add_argument('-I','--IntensitySteps', type=int, default = 0,
                     help="one less than the number of different intensities you plan to take")
+parser.add_argument('-p','--pePeak', type=float, default = 0,
+                    help="if you manually want to input a 1 pe peak")
 #the way to get output in ADC currently cannot be called from here.
 #Everything is labeled in mV anyway and I didn't feel like changing it
 args = parser.parse_args()
@@ -48,49 +50,49 @@ if  args.voltage<=0:
 outname=args.output
 
 tg=TGraphErrors()
-tg.SetTitle("Sigma/Mean vs. Mean at several intensities;mean (mV)")
+tg.SetTitle("Sigma/Mean vs. Mean;mean (n*1PePeak)")
 tg2=TGraphErrors()
 tg2.SetTitle("Mean (1pe normalization) vs. Intensity; Laser Intensity")
-tg3=TGraphErrors()
-tg3.SetTitle("Sigma/Mean vs. Intensity; Intensity")
-tc=TCanvas("tc","Peak height Distribution data",1350,450)
-tc.Divide(3,1)
+tc=TCanvas("tc","Peak height Distribution data",900,450)
+tc.Divide(2,1)
 
 nbuf=args.nbuf
 inten_steps = args.IntensitySteps
+pe_peak = args.pePeak
 
 #set voltage
 subprocess.call(["setVoltage.py","-pqv"+str(voltage)])
 
 #Find 1 pe peak
-print bcolors.HEADER+"n\Taking dark pulses to find 1 Pe peak"+bcolors.ENDC
-darkBuffname=outname+"_1peNormalization_darkCalculation.root"
-subprocess.call(["./darkBuffers","-b50","-o"+darkBuffname])
-dB=TFile(darkBuffname)
-onePePeak=dB.Get("h1PePeakmV").GetBinContent(1);
+if pe_peak != 0:
+    print "You opted not to take dark buffers. Your 1 pe peak value is"+str(pe_peak)
+    onePePeak = pe_peak
+else:
+    print bcolors.HEADER+"Taking dark pulses to find 1 Pe peak"+bcolors.ENDC
+    darkBuffname=outname+"_1peNormalization_darkCalculation.root"
+    subprocess.call(["./darkBuffers","-b50","-o"+darkBuffname])
+    dB=TFile(darkBuffname)
+    onePePeak=dB.Get("h1PePeakmV").GetBinContent(1);
 
 for i in range(inten_steps+1):
+    print "The normalization to 1 pe peak is "+str(onePePeak)
     print bcolors.HEADER+"\nAbout to take pulses. Please go to the laser and set an intensity"+bcolors.ENDC
     print bcolors.HEADER+"\nPlease record the intensity (user input): "+bcolors.ENDC
     inten_level = raw_input()
     print bcolors.HEADER+"\nYour intensity is "+str(inten_level)+bcolors.ENDC
     filename=outname+"_inten"+str(inten_level)+"_"+str(voltage)+"V.root"
     #take pulses
-    subprocess.call(["./lightBuffersMorePeaks","-b"+str(nbuf), "-o"+filename, "-n"+str(onePePeak)])
+    subprocess.call(["./lightBuffersMorePeaks","-b"+str(nbuf), "-o"+filename, "-p", "-n"+str(onePePeak)])
     # Create the graph of sigma/mean
     tf=TFile(filename)
-    sigma_over_mean = tf.Get("hSigmaOMean").GetBinContent(1);
-    mean_peak_height = tf.Get("hMeanPeakHeight").GetBinContent(1);
-    mean_penorm_height = tf.Get("hMeanInPePeaks").GetBinContent(1);
-    tg.SetPoint(tg.GetN(),mean_peak_height,sigma_over_mean);
+    sigma_over_mean = tf.Get("hSigmaOMeanPe").GetBinContent(1);
+    mean_penorm_height = tf.Get("hMeanPePeaks").GetBinContent(1);
+    tg.SetPoint(tg.GetN(),mean_penorm_height,sigma_over_mean);
     tg2.SetPoint(tg2.GetN(),float(inten_level),mean_penorm_height);
-    tg3.SetPoint(tg3.GetN(),float(inten_level),sigma_over_mean);
     tc.cd(1);
     tg.Draw("ALP*")
     tc.cd(2);
     tg2.Draw("ALP*")
-    tc.cd(3);
-    tg3.Draw("ALP*")
     tc.Update()
     print bcolors.WARNING+"When done, turn off the laser... peasant!"+bcolors.ENDC
     print "Your last used intensity was "+str(inten_level)
