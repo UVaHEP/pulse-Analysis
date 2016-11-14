@@ -23,6 +23,7 @@ public:
   int GetNPeaks();
   double CalcDarkRate();
   void SetSearchThreshold(double peThreshold) {_peThreshold = peThreshold;}
+  TH1F* GetHdist() {return (TH1F*)(hdist->Clone());}
   TSPECTFLOAT* GetPositionX();
   TSPECTFLOAT* GetPositionY();
   TSPECTFLOAT* GetBkgdCorrectedY();
@@ -31,14 +32,14 @@ private:
   TSpectrum *tspectrum;
   TH1F *buf;
   TH1F *hbkg;
-  TH1F *hdist;  // frequeny distribution of ADC samples
+  TH1F *hdist;  // frequency distribution of ADC samples
   TH1F *hscan;  // count of samples above threshold
   TF1  *tfNoise;
   int npeaks;
   double _peThreshold;
   double snglPeak;
   TSPECTFLOAT *bkgCorrectedY;
-  TSPECTFLOAT *deltaX;
+  TSPECTFLOAT *deltaT;
   double dT;
   TCanvas *tcD;
 };
