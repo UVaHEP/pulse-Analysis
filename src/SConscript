@@ -6,8 +6,8 @@ include = Dir('#/include')
 picoscopeInclude = Dir('/opt/picoscope/include')
 picoscopeDriver = Dir('/opt/uvahep/include')
 
-libenv = Environment(LIBS=['Spectrum'], CCFLAGS=' -ggdb  -std=c++11  ', CPPPATH=[include], LIBPATH=['#/lib', '/opt/uvahep/lib', '/opt/picoscope/lib', '.'])
-env = Environment(LIBS=['libpicoscopeInterface', 'Spectrum', 'ps5444b', 'ps5000a','ps6000','ps6404', 'libeventHandler'], CCFLAGS=' -ggdb  -std=c++11  ', CPPPATH=[include, picoscopeInclude, picoscopeDriver], LIBPATH=['#/lib', '/opt/uvahep/lib', '/opt/picoscope/lib', '.'])
+libenv = Environment(LIBS=['Spectrum'], CCFLAGS=' -ggdb  -std=c++14  ', CPPPATH=[include], LIBPATH=['#/lib', '/opt/uvahep/lib', '/opt/picoscope/lib', '.'])
+env = Environment(LIBS=['libpicoscopeInterface', 'Spectrum', 'ps5444b', 'ps5000a','ps6000','ps6404', 'libeventHandler'], CCFLAGS=' -ggdb  -std=c++14  ', CPPPATH=[include, picoscopeInclude, picoscopeDriver], LIBPATH=['#/lib', '/opt/uvahep/lib', '/opt/picoscope/lib', '.'])
 
 env.Append(RPATH = [str(Dir('/opt/uvahep/lib')), str(Dir('#/lib'))])
 
