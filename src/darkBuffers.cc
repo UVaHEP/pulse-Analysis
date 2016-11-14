@@ -72,8 +72,15 @@ void setupScope(ps5000a &dev,   chRange &range, int samples) {
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
   dev.setPostTriggerSamples(samples/2);
-
 }
+
+void acquireBuffers(ps5000a &dev, vector <vector<short> > &data){
+  dev.prepareBuffers();
+  dev.captureBlock(); 
+  data = dev.getWaveforms();
+}
+
+
 
 Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
   dev.setCaptureCount(1);
@@ -99,7 +106,7 @@ Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
     graphtime[i] = timebaseStart+i*timebase;
   }
   
-  hist = new TH1F("pulses", "pulses", waveform.size(), 0, waveform.size());
+  hist = new TH1F("pulses", "pulses;x[2 ns]", waveform.size(), 0, waveform.size());
   for (int i = 0; i < waveform.size(); i++) {
     hist->SetBinContent(i, -1*waveform[i]);
   }
@@ -117,10 +124,6 @@ Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
   app.Run(true); 
 
   return eH.threshold(); 
-
-     
-
-  
 }
 
 int main(int argc, char **argv) {
@@ -135,7 +138,7 @@ int main(int argc, char **argv) {
   bool userThreshold = false; 
   chRange range = PS_20MV;
   TString fileToOpen;
-  while ((opt = getopt(argc, argv, "R:b:n:o:P:f:uhq0")) != -1) {
+  while ((opt = getopt(argc, argv, "s:b:o:P:R:f:uhq0")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
@@ -144,7 +147,7 @@ int main(int argc, char **argv) {
       nbuffers=atoi(optarg);
       break;
     case 'u':
-      // Capture first waveform, then allow the user to select a threshold
+      // Capture first waveform, then allow the user to select a threshold via GUI
       userThreshold = true;
       break;
     case 'o':
@@ -165,10 +168,10 @@ int main(int argc, char **argv) {
       else std::cout<<"Unknown range, defaulting to PS_20MV"<<std::endl;
       break;
     case 'q':   // exit when finished
-      quit=true;
+      quit=true;  // not implemented
       break;
     case '0':   // turn off graphics
-      quiet=true;  
+      quiet=true;    // not implemented
       break;
     case 'f':   // loads in a file, ignores picoscope stuff
       fileToOpen = optarg;
@@ -176,8 +179,14 @@ int main(int argc, char **argv) {
       break;
     case 'h':
     default: /* '?' */
-      fprintf(stderr, "Usage: %s",argv[0]);
-      fprintf(stderr, "-u -s nsamples[40000] -b nbuffers[50] -o output[darkBuffers.root]\n");
+      fprintf(stderr, "\nUsage: %s [options]\n",argv[0]);
+      fprintf(stderr, " -s nsamples[40000] : number of samples per buffer\n");
+      fprintf(stderr, " -b nbuffers[50] : number of buffers\n");
+      fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
+      fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
+      fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_20MV,PS_50MV]\n");
+      fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
+      fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
       exit(EXIT_FAILURE);
     }
   }
@@ -188,37 +197,26 @@ int main(int argc, char **argv) {
   vector <vector<short> > data;
   float timebase;
   
-  if (fileToOpen.Length()==0){
-  
+  if (fileToOpen.Length()==0){  
     dev.open(picoscope::PS_12BIT);
     setupScope(dev, range, samples); 
-
-  
+    timebase = dev.timebaseNS();
+    std::cout << "Timebase: " << timebase << std::endl;
+    
+    // run GUI to pick 1PE threshold
     if (userThreshold) {
       peThreshold = userThresholdFn(dev, samples, theApp);
     }
     std::cout << "pe Threshold: " << peThreshold << std::endl; 
   
     dev.setCaptureCount(nbuffers);
-    dev.prepareBuffers();
-    dev.captureBlock(); 
+    acquireBuffers(dev,data);
+    //dev.prepareBuffers();
+    //dev.captureBlock(); 
     dev.close();
-
-    timebase = dev.timebaseNS();
-    std::cout << "Timebase: " << timebase << std::endl; 
-    data = dev.getWaveforms();
-
-    vector<float> graphWaveform(data[0].size());
-    vector<float> graphtime(graphWaveform.size());
-    float timebaseStart = timebase*samples/2*-1;
-
-    
-    for (int i = 0; i < data[0].size(); i++) {
-      graphtime[i] = timebaseStart+i*timebase;
-    }
+    //data = dev.getWaveforms();
   }
-  
-  else {
+  else { // reaf buffers from file
     nbuffers = 0;
     TFile infile(fileToOpen);
     TIter nextkey(gDirectory->GetListOfKeys());
@@ -254,14 +252,14 @@ int main(int argc, char **argv) {
   delete dT;
   delete dV;
 
-
+  // We use these histograms to write results to the TFile
   // delta time distribution
   TH1F *hdTime=new TH1F("hdTime","Delta times;x [2 ns]",101,-2.5,502.5);
   // pulse height distribution
   float maxPeakRange=35000; // HACK!!!!
   TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,maxPeakRange);
   //Threshold for counted peaks, maximum needs to be dynamic
-  TH1F *hpeakthresh=new TH1F("hpeakthresh","Scan of peaks;Threshold",50,0,maxPeakRange);
+  TH1F *hpeakthresh=new TH1F("hpeakthresh","Scan of peaks;Threshold",500,0,maxPeakRange);
   TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
   TCanvas *tc1=new TCanvas("tc1","Peaks and Time distributions",0,450,1200,400);
   tc1->Divide(3,1);
@@ -270,8 +268,9 @@ int main(int argc, char **argv) {
   
   DarkPeaker *dPk = new DarkPeaker(peThreshold/2);
 
-  bool first=false;
+  bool first=true;
   int nbuf=0;
+  
   for (auto &waveform : data) {
     nbuf++;
     std::cout << "Processing buffer: " << nbuf << std::endl;
@@ -280,16 +279,18 @@ int main(int argc, char **argv) {
     for (int i = 0; i < waveform.size(); i++) {
       hist->SetBinContent(i, -1*waveform[i]);
     }
+
+    dPk->SetBuffer(hist,timebase);
+    dPk->AnalyzePeaks();
+    
     if (first) {
       int iymax=(int)hist->GetMaximum();
       iymax=iymax*1.1;
       iymax-=iymax%1000;
       hpeaks->SetBins(200,0,iymax);
+      dPk->GetHdist()->Write();  // save a copy of data used for noise estimation
       first=false;
     }
-    
-    dPk->SetBuffer(hist,timebase);
-    dPk->AnalyzePeaks();
     
     // retrieve peak heights
     TSPECTFLOAT *yvals = dPk->GetBkgdCorrectedY();
@@ -306,8 +307,8 @@ int main(int argc, char **argv) {
     }
     
     // fill delta time distro
-    TSPECTFLOAT *deltaX = dPk->GetDeltaX();
-    for (int i=0;i<npeaks-1;i++) hdTime->Fill(deltaX[i]);
+    TSPECTFLOAT *deltaT = dPk->GetDeltaX();
+    for (int i=0;i<npeaks-1;i++) hdTime->Fill(deltaT[i]);
 
     // draw samples buffer with peaks and background
     tc->cd();
@@ -332,6 +333,7 @@ int main(int argc, char **argv) {
     hist->Write(); 
     delete hist;
   }
+  
   hdTime->Write();
   hpeaks->Write();
   hpeakthresh->Write();
@@ -339,51 +341,64 @@ int main(int argc, char **argv) {
   hdTime->DrawCopy();
   tc1->Update();
 
-   //Total time: 40000 comes from bins in hist (buffer)
-  double timeTotal = nbuffers*40000*timebase;
+  //Total time for all buffers
+  double timeTotal = nbuffers*samples*timebase;
   std::cout <<"Number of buffers: "<<nbuffers<<std::endl;
   
-  // Get the average dark pulse rate 
-  TH1F *hRate=new TH1F("hRate","Dark Pulse Rate;;MHz",1,-1,1);
-  double meanDt = -2/hdTime->GetFunction("expoDCR")->GetParameter(1);  // Dt in [ns]
-  double rate = 1 / meanDt * 1000;  // in MHz
-  if (rate<0) {
-    double newrate = totalPeaks/timeTotal/1000000;// in MHz
-    std::cout << "Dark Pulse Rate Calc for negative scenario (MHz): "<< newrate <<std::endl;
-    TH1F *hRateNegRoutine = new TH1F("hRateNegRoutine","DarkPulseRate;;MHz",1,-1,1);
-    hRateNegRoutine->SetBinContent(1,newrate);
-    hRateNegRoutine->Write();
-    }
-    else 
-    std::cout << "Average dark pulse rate: " << rate << std::endl;
-    double par[2];
-    TF1 *fcn=hdTime->GetFunction("expoDCR");
-    fcn->GetParameters(par);
-    hRate->SetBinContent(1,rate);
-    hRate->SetBinError(1,rate*hdTime->GetFunction("expoDCR")->GetParError(1)/
-		     par[1]);
-    hRate->Write();
-   
-    // Find the afterpulsing rate
+  // Dark pulse rate information
+  TH1F *hRate=new TH1F("hRate","Dark Pulse Rate;;MHz",2,-1,2); // bin1 DCR fit, bin2 DCR count
+  TH1F *hCount=new TH1F("hCount","Dark Pulse Count;;",1,-1,1);
+  TH1F *hTtot=new TH1F("hTtot","Total time of samples;;",1,-1,1);
+  TH1F *hAp=new TH1F("hAp","After Pulse Rate",1,-1,1);
+  // simple counts
+  hCount->SetBinContent(1,totalPeaks);
+  hTtot->SetBinContent(1,timeTotal);
+  double dcr=totalPeaks/timeTotal/1000000; // in MHz, not corrected for AP
+  hRate->SetBinContent(2,totalPeaks/timeTotal/1000000);
+  hRate->SetBinError(2,TMath::Sqrt(totalPeaks)/timeTotal);
+  // extracted from exponential fit
+  TF1 *tf_expoDCR=hdTime->GetFunction("expoDCR");
+  double par[2];
+  tf_expoDCR->GetParameters(par);
+  double meanDt = -2/par[1];  // Delta_t in [ns]
+  double dcrFit = 1 / meanDt * 1000;  // in MHz
+  double dcrErr = dcrFit*tf_expoDCR->GetParError(1)/par[1];
+  hRate->SetBinContent(1,dcrFit);
+  hRate->SetBinError(1,dcrErr);
+
+  std::cout << "Average dark pulse rate (uncorrected): " << dcr << std::endl;
+
+  double aPrate=0;
+  if (dcrFit<0 || TMath::Abs(dcrErr/dcrFit)>0.25){
+    std::cout << "Warning Fit yields negative DCR or large error" << std::endl;
+    std::cout << "Afterpulse calculation skipped" << std::endl;
+  }
+  else {  // calculate afterpulse rate
     //Written in part by Grace E. Cummings, 30 July 2016
-    TF1 *apFcn = hdTime->GetFunction("afterPulseFit");
+    TF1 *tf_apFcn = hdTime->GetFunction("afterPulseFit");
     double maxBinTime = hdTime->GetMaximumBin();
     double xmaxBinTime = hdTime->GetBinCenter(maxBinTime);
     double xmaxTime = hdTime->GetXaxis()->GetXmax();
 
     //ap Rate calculated as ratio of fit of afterpulses to fit of dark counts
     //Fit of afterpulses is the afterPulseFit-expoDCR
-    double aPFint = apFcn->Integral(xmaxBinTime,xmaxTime);
-    double expDCRint = fcn->Integral(xmaxBinTime,xmaxTime);
+    double aPFint = tf_apFcn->Integral(xmaxBinTime,xmaxTime);
+    double expDCRint = tf_expoDCR->Integral(xmaxBinTime,xmaxTime);
     double binWidthhdTime = hdTime->GetBinWidth(1);
     
-    double aPrate = (aPFint-expDCRint)/expDCRint;
-    TH1F *hAp=new TH1F("hAp","After Pulse Rate",1,-1,1);
+    aPrate = (aPFint-expDCRint)/expDCRint;
+    
     hAp->SetBinContent(1,aPrate);
     //Error in afterpulse rate. Sqrt(excess)~sigma of excess
     double excess = (aPFint-expDCRint)/binWidthhdTime;
-    hAp->SetBinError(1,sqrt(excess)/(expDCRint/binWidthhdTime));
-    hAp->Write();
+    hAp->SetBinError(1,sqrt(excess)/(expDCRint/binWidthhdTime));    
+  }
+    
+  hRate->Write();
+  hCount->Write();
+  hTtot->Write();
+  hAp->Write();
+    
 		     
   //Find the crosstalk fraction
   //written by Grace E. Cummings, 26 July 2016
@@ -470,18 +485,22 @@ int main(int argc, char **argv) {
   f.Close();
  
   std::cout << "===============================" << std::endl;
-  std::cout << "Fit for dark pulse rate: " << rate << " MHz" << std::endl;
+  std::cout << "Dark pulse rate (uncorrected): " << dcr << " MHz" << std::endl;
+  std::cout << "Dark pulse fit: " << dcrFit << " MHz" << std::endl;
   std::cout << "Afterpulse probability:  " << aPrate << std::endl;
   std::cout << "Crosstalk Fraction (lightspin method): " << crosstalkFraction << std::endl;
   //std::cout << "Our crosstalk fraction method: : "<< ourcrosstalkFraction <<std::endl;
   std::cout << "1Pe Peak value (mV): " << meanhPeakmV << std::endl;
   std::cout << "===============================" << std::endl;
   
-  if (quit) return 0;
-  std::cout << "Hit any ^c to exit" << std::endl;
-  theApp.Run(true);
+  std::cout<< "Close TCanvas: Peaks and Time distributions to exit" << std::endl;
+  tc1->Connect("TCanvas","Closed()","TApplication",gApplication,"Terminate()");
+  if (quit)
+    return 0;
+  else
+    theApp.Run(true);
+  
   return 0;
-
 
 }
 

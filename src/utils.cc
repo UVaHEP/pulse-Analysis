@@ -15,24 +15,30 @@ DarkPeaker::DarkPeaker(double peThreshold){
   hbkg=0;
   bkgCorrectedY=0;
   hdist=0;
+  deltaT=0;
   if (peThreshold) _peThreshold=peThreshold;
-  tcD = new TCanvas("tcD","Dark Peak Analysis"); 
+  tcD = new TCanvas("tcD","Dark Peak Analysis");
+  // these will be defined in FindNoise()
+  hdist=new TH1F("hdist","Background subtracted ADC distribution",100,0,100);
+  hscan=new TH1F("hscan","Threshold scan",100,0,100);
 }
 
 void DarkPeaker::SetBuffer(TH1F *newbuf, double sampleTime){
+  
   buf=newbuf;
   dT=sampleTime;
   if (hbkg) delete hbkg;
-  if (bkgCorrectedY) {
+  if (bkgCorrectedY) { 
     delete bkgCorrectedY;
     bkgCorrectedY=0;
   }
-  if (hdist) {
-    delete hdist;
-    hdist=0;
+  if (deltaT) {
+    delete deltaT;
+    deltaT=0;
   }
   npeaks=0;
 }
+
 int DarkPeaker::GetNPeaks(){return npeaks;}
 TH1F* DarkPeaker::GetBackground(){return hbkg;}
 TSPECTFLOAT* DarkPeaker::GetPositionX(){ return tspectrum->GetPositionX();}
@@ -46,18 +52,19 @@ TSPECTFLOAT* DarkPeaker::GetBkgdCorrectedY(){
     bkgCorrectedY[i]=ypeaks[i]-hbkg->GetBinContent((int)xpeaks[i]+1);
   return bkgCorrectedY;
 }
+
 TSPECTFLOAT* DarkPeaker::GetDeltaX(){
   Int_t *index=new Int_t[npeaks];
   TSPECTFLOAT *xpeaks = tspectrum->GetPositionX();
   TMath::Sort(npeaks, xpeaks, index, kFALSE);  // index sort by timestamp
-  deltaX=new TSPECTFLOAT[npeaks-1];
+  deltaT=new TSPECTFLOAT[npeaks-1];
   for (int i=0;i<npeaks-1;i++) {
     int idx1=index[i];
     int idx2=index[i+1];
-    deltaX[i]=xpeaks[idx2]-xpeaks[idx1];
+    deltaT[i]=xpeaks[idx2]-xpeaks[idx1];
   }
   delete index;
-  return deltaX;
+  return deltaT;
 }
 
 
@@ -120,9 +127,9 @@ void DarkPeaker::FindBackground(){
 // find noise from distribution pulse height spectrum
 void DarkPeaker::FindNoise(){
   // background subtracted sample data
-  hdist=new TH1F("hdist","ADC distribution",
-		       100,0,buf->GetMaximum());
-  hscan=new TH1F ("hscan","Threshold scan",50,0,buf->GetBinContent(buf->GetMaximumBin()));
+  hdist->SetBins(100,0,buf->GetMaximum());
+  hscan->SetBins(100,0,buf->GetBinContent(buf->GetMaximumBin()));
+
   for (int i = 1; i <= buf->GetNbinsX(); i++){
     double val=buf->GetBinContent(i) - hbkg->GetBinContent(i);
     hdist->Fill(val);
@@ -141,7 +148,7 @@ void DarkPeaker::FindNoise(){
   double maxheightthresh = hscan->GetBinContent(maxbinthresh);
   double xmaxThres = hscan->GetXaxis()->GetXmax();
   double xminThres = hscan->GetXaxis()->GetXmin();
-  double xendfit=hscan->GetBinCenter(hscan->GetNbinsX());
+  double xendfit= hscan->GetBinCenter(hscan->GetNbinsX());
   
   //Finds bin with contents <= 10% of maximum. This serves as end of fit
   for (int i = maxbinthresh; i<=hscan->GetNbinsX(); i++){
@@ -160,14 +167,11 @@ void DarkPeaker::FindNoise(){
   double threshSlope = TMath::Abs(thresFit->GetParameter(1));
 
   //Threshold now will be 4 times 1/slope value. This should select out most background. 4 times was determined visually
-  _peThreshold=4/threshSlope;
+  _peThreshold=4.5/threshSlope;  // BH tweak
   
-
     //hscan option
     std::cout <<
       "1PE peak not found, estimate noise to be above "<< _peThreshold << std::endl;
-    
-
 }
 // dark count rate in MHz
 double DarkPeaker::CalcDarkRate(){

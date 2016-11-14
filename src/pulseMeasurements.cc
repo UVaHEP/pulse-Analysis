@@ -28,7 +28,8 @@ void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers) {
 
   dev.enableBandwidthLimit(picoscope::A); 
   dev.setTimebase(1);
-  dev.setSimpleTrigger(EXT, 18000, trgRising, 0, 0); 
+  dev.setSimpleTrigger(EXT, 18000, trgFalling, 0, 0);
+  //dev.setSimpleTrigger(EXT, -10000, trgFalling, 0, 0); 
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
   dev.setPostTriggerSamples(samples/2);
@@ -96,12 +97,19 @@ int main(int argc, char **argv) {
   setupPicoscope(dev, range, samples, nbuffers); 
 
 
-  TH2F *hpersist=new TH2F("hpersist","Persistance Display",samples,
-			0,samples,100,0,15000);
-
+  TH2F *hpersist=new TH2F("hpersist","Persistence Display",samples,
+			0,samples,250,-0.5,15000-0.5);
+  hpersist->GetXaxis()->SetTitle("Sample time [2ns/div]");
+  
+  TH2F *hpersistCopy = (TH2F*)hpersist->Clone();
+  hpersistCopy->SetTitle("Threshold Scan");
+  hpersistCopy->GetYaxis()->SetTitle("Threshold [ADC]");
+   
   TH1F *hsum=new TH1F("hsum","Sum of wave data",samples,0,samples);
-  TH1F* hpulses1=new TH1F("hpulses1","Pulse area distribution",200,-20000,200000);
-  TH1F* hpulses0=new TH1F("hpulses0","Pulse area distribution",200,-20000,200000);
+  TH1F* hpulses1=new TH1F("hpulses1","Pulse area distribution",2000,-20000,200000);
+  hpulses1->GetXaxis()->SetTitle("Pulse Area");
+  TH1F* hpulses0=new TH1F("hpulses0","Pulse area distribution",2000,-20000,200000);
+  hpulses0->SetLineColor(kRed);
 
   TH1F* waveForms[nsave];
   int wavSaved=0;
@@ -116,9 +124,12 @@ int main(int argc, char **argv) {
       TH1F *hsamp = new TH1F("hsamp","Samples", waveform.size(), 0, waveform.size());
       for (int i = 0; i < waveform.size(); i++) {
 	hpersist->Fill(i, -1*waveform[i]);
+	hpersistCopy->Fill(i, -1*waveform[i]);
 	hsamp->SetBinContent(i, -1*waveform[i]);
       }
       hsum->Add(hsamp);
+
+      //Note! Currently this is in ADC  counts, not anything else
       PHD(hsamp,hpulses1,xlow,xlow+xwid);
       PHD(hsamp,hpulses0,z0,z0+xwid);
       if (wavSaved<nsave) {
@@ -139,8 +150,9 @@ int main(int argc, char **argv) {
   
   // projections of persistance histogram to show counts vs threshold
   tc->cd(1)->SetLogy();
-  hpersist->ProjectionY("_py1",xlow,xlow+xwid)->DrawCopy();
-  hpersist->ProjectionY("_py0",z0,z0+xwid)->DrawCopy("same");
+  hpersistCopy->ProjectionY("_py1",xlow,xlow+xwid)->DrawCopy();
+  hpersistCopy->ProjectionY("_py0",z0,z0+xwid)->DrawCopy("same");
+  hpersistCopy->GetXaxis()->SetTitle("Threshold [ADC]");
 
   // plot the persistance histogram
   tc->cd(2);
@@ -149,6 +161,7 @@ int main(int argc, char **argv) {
   hsum->SetLineColor(kGray);
   hsum->SetLineWidth(3);
   hsum->DrawCopy("same");
+
   // pulse height distributions
   tc->cd(3);
   hpulses1->DrawCopy(); 

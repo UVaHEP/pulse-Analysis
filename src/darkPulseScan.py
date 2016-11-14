@@ -20,7 +20,6 @@ class bcolors:
 #######################
 
 parser = argparse.ArgumentParser(description='Take dark pulse data')
-
 parser.add_argument('-v','--voltage', type=float, default = 0,
                     help="starting voltage")
 parser.add_argument('-s','--nsteps', type=int, default=0,
@@ -35,7 +34,7 @@ parser.add_argument('-0', '--zero', action='store_true',
                     help="zero voltage measure")
 parser.add_argument('-o', '--output', type=str, default = "darkBuffers",
                     help="outputfile template")
-parser.add_argument('-b', '--nbuf', type=int, default = 5,
+parser.add_argument('-b', '--nbuf', type=int, default = 50,
                     help="number of buffers to take [5]")
 args = parser.parse_args()
 
@@ -115,7 +114,7 @@ for i in range(nsteps+1):
     tgc.SetPointError(tgc.GetN()-1,0,error);
     sigmaOmean=tf.Get("hSigmaOMean").GetBinContent(1);
     tgd.SetPoint(tgd.GetN(),pePeak,sigmaOmean);
-    tge.SetPoint(tgd.GetN(),v,sigmaOmean);
+    tge.SetPoint(tge.GetN(),v,sigmaOmean);
     tc.cd(1);
     tg.Draw("ALP*")
     tc.cd(2)
