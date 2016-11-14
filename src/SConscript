@@ -38,7 +38,7 @@ env.Program('pulseMeasurements', ['pulseMeasurements.cc'])
 
 ##Grace E. Cummings added to test new scripts
 env.Program('lightBuffersMorePeaks',['lightBuffersMorePeaks.cc','lightutils.cc'])
-env.Program('testOpt',['test.cc'])
+#env.Program('testOpt',['test.cc'])
 
 ##TA Added a Model 6000 Series Light Buffers Script
 env.Program('lightBuffersMorePeaks6000',['lightBuffersMorePeaks6000.cc','lightutils.cc'])

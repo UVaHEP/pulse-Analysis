@@ -37,7 +37,7 @@ void setupPicoscope(ps6000 &dev, chRange range, int samples, int nbuffers) {
 }
 
 //Uses a rough estimate of mean as a basis for histogram and fit limits
-int baseDistLimits(Float_t *heights, int nbuffers) {
+int baseDistLimits(TSPECTFLOAT *heights, int nbuffers) {
   int maximum = 0;
   for (int i =0; i < nbuffers; i++) {
     if (heights[i] > maximum){
@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
   float timebase = dev.timebaseNS();
 
   //Get's peak heights and makes array of said heights
-  Float_t *peakHeight;
+  TSPECTFLOAT *peakHeight;
   
   int buffNum     = 0;
   TSPECTFLOAT *heightsOfPeaks     = new TSPECTFLOAT[nbuffers];
