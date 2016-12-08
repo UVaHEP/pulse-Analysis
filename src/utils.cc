@@ -1,5 +1,8 @@
 #include "utils.h"
 #include "TMath.h"
+#include "TPaveStats.h"
+#include "TStyle.h"
+#include "TAxis.h"
 #include <stdlib.h>
 #include <pthread.h>
 #include <iostream>
@@ -9,13 +12,11 @@ using std::endl;
 
 
 
-DarkPeaker::DarkPeaker(double peThreshold){
+//DarkPeaker::DarkPeaker(double peThreshold) : TSpectrum(5000) {
+DarkPeaker::DarkPeaker(double peThreshold) {
   tspectrum=new TSpectrum(5000,2);
-  buf=0;
-  hbkg=0;
-  bkgCorrectedY=0;
-  hdist=0;
-  deltaT=0;
+  haveAnalysis=false;
+  Reset();
   if (peThreshold) _peThreshold=peThreshold;
   tcD = new TCanvas("tcD","Dark Peak Analysis");
   // these will be defined in FindNoise()
@@ -23,49 +24,38 @@ DarkPeaker::DarkPeaker(double peThreshold){
   hscan=new TH1F("hscan","Threshold scan",100,0,100);
 }
 
+void DarkPeaker::Reset(){
+  // check if we have run the analyze method and reset storage
+  if (haveAnalysis){
+    delete hbkg;
+    delete peaksX;
+    delete peaksY;
+    delete bkgCorrectedY;
+    delete deltaT;
+    haveAnalysis=false;
+  }
+  buf=0;
+  hbkg=0;
+  peaksX=0;
+  peaksY=0;
+  bkgCorrectedY=0;
+  deltaT=0;
+  npeaks=0;
+  haveAnalysis=false;
+}
+
+
 void DarkPeaker::SetBuffer(TH1F *newbuf, double sampleTime){
-  
+  Reset();
   buf=newbuf;
   dT=sampleTime;
-  if (hbkg) delete hbkg;
-  if (bkgCorrectedY) { 
-    delete bkgCorrectedY;
-    bkgCorrectedY=0;
-  }
-  if (deltaT) {
-    delete deltaT;
-    deltaT=0;
-  }
-  npeaks=0;
 }
 
 int DarkPeaker::GetNPeaks(){return npeaks;}
 TH1F* DarkPeaker::GetBackground(){return hbkg;}
-TSPECTFLOAT* DarkPeaker::GetPositionX(){ return tspectrum->GetPositionX();}
-TSPECTFLOAT* DarkPeaker::GetPositionY(){ return tspectrum->GetPositionY();}
-TSPECTFLOAT* DarkPeaker::GetBkgdCorrectedY(){
-  if (bkgCorrectedY) return bkgCorrectedY;
-  bkgCorrectedY = new TSPECTFLOAT[npeaks];
-  TSPECTFLOAT *xpeaks = tspectrum->GetPositionX();
-  TSPECTFLOAT *ypeaks = tspectrum->GetPositionY();
-  for (int i=0; i<npeaks; i++)
-    bkgCorrectedY[i]=ypeaks[i]-hbkg->GetBinContent((int)xpeaks[i]+1);
-  return bkgCorrectedY;
-}
 
-TSPECTFLOAT* DarkPeaker::GetDeltaX(){
-  Int_t *index=new Int_t[npeaks];
-  TSPECTFLOAT *xpeaks = tspectrum->GetPositionX();
-  TMath::Sort(npeaks, xpeaks, index, kFALSE);  // index sort by timestamp
-  deltaT=new TSPECTFLOAT[npeaks-1];
-  for (int i=0;i<npeaks-1;i++) {
-    int idx1=index[i];
-    int idx2=index[i+1];
-    deltaT[i]=xpeaks[idx2]-xpeaks[idx1];
-  }
-  delete index;
-  return deltaT;
-}
+TSPECTFLOAT* DarkPeaker::GetTSpectrumX(){ return tspectrum->GetPositionX();}
+TSPECTFLOAT* DarkPeaker::GetTSpectrumY(){ return tspectrum->GetPositionY();}
 
 
 int DarkPeaker::AnalyzePeaks(){
@@ -91,9 +81,32 @@ int DarkPeaker::AnalyzePeaks(){
   //npeaks=tspectrum->Search(buf,sigma,"nomarkov,nodraw",threshold);
   //int npeaks=tspectrum->Search(buf,sigma,"nomarkov",threshold);
   cout << "Found " << npeaks << " peaks" << endl;
-  cout << "Dark pulse rate: " << CalcDarkRate() << " MHz" << endl;
+  cout << "Approximate DCR: " << CalcDarkRate() << " MHz" << endl;
+
+  // retrieve the peaks and sort by time order
+  Int_t *index=new Int_t[npeaks];
+  TSPECTFLOAT *xpeaks = tspectrum->GetPositionX();
+  TSPECTFLOAT *ypeaks = tspectrum->GetPositionY();
+  TMath::Sort(npeaks, xpeaks, index, kFALSE);  // index sort by timestamp
+  peaksX=new double[npeaks];
+  peaksY=new double[npeaks];
+  for (int i=0;i<npeaks;i++) {
+    peaksX[i] = xpeaks[index[i]];
+    peaksY[i] = ypeaks[index[i]];
+  }  
+  haveAnalysis=true;
   return 0;
 }
+
+void DarkPeaker::GetPoint(int i, double &x, double &y) const{
+  if (i>=npeaks) {
+    cout << "Warning: npoints= " << npeaks
+	 << " index: " << i << " requested" << endl;
+  }
+  x=peaksX[i];
+  y=peaksY[i];
+}
+
 
 void DarkPeaker::FindBackground(){
   tcD->cd();
@@ -129,7 +142,7 @@ void DarkPeaker::FindNoise(){
   // background subtracted sample data
   hdist->SetBins(100,0,buf->GetMaximum());
   hscan->SetBins(100,0,buf->GetBinContent(buf->GetMaximumBin()));
-
+  
   for (int i = 1; i <= buf->GetNbinsX(); i++){
     double val=buf->GetBinContent(i) - hbkg->GetBinContent(i);
     hdist->Fill(val);
@@ -160,18 +173,20 @@ void DarkPeaker::FindNoise(){
 
   //Creates Exponential fit of hscan to find lambda value. Fits the background contributions
   TF1 *thresFit = new TF1("thresFit", "expo", xminThres, xmaxThres);
-  tcD->cd();
+  gStyle->SetOptFit(0001);
   hscan->Fit("thresFit","","",0,xendfit);
+  tcD->cd();
   hscan->DrawCopy();
-  tcD->Update();
+  //gStyle->SetOptStat(0);
+  gPad->Update();
   double threshSlope = TMath::Abs(thresFit->GetParameter(1));
 
   //Threshold now will be 4 times 1/slope value. This should select out most background. 4 times was determined visually
-  _peThreshold=4.5/threshSlope;  // BH tweak
+  _peThreshold=4.5/threshSlope;  // BH tweak to 4.5 times
   
-    //hscan option
-    std::cout <<
-      "1PE peak not found, estimate noise to be above "<< _peThreshold << std::endl;
+  //hscan option
+  std::cout <<
+    "1PE peak not found, estimate noise to be above "<< _peThreshold << std::endl;
 }
 // dark count rate in MHz
 double DarkPeaker::CalcDarkRate(){
@@ -199,3 +214,46 @@ TString getoutput(TString cmd)
   // return trim(data);
   return data;
 }
+
+
+// Create the histogram to range from log10(min) to log10(max) 
+
+void BinLogX(TH1*h) {
+   TAxis *axis = h->GetXaxis();
+   int bins = axis->GetNbins();
+
+   Axis_t from = axis->GetXmin();
+   Axis_t to = axis->GetXmax();
+   Axis_t width = (to - from) / bins;
+   Axis_t *new_bins = new Axis_t[bins + 1];
+   
+   for (int i = 0; i <= bins; i++) {
+     new_bins[i] = TMath::Power(10, from + i * width);
+     // cout << new_bins[i] << endl;
+   }
+   axis->Set(bins, new_bins);
+   delete new_bins;
+}
+
+/*
+// set up logarithmic bins
+void BinLogX(TH1*h) {
+  
+  TAxis *axis = h->GetXaxis();
+  int bins = axis->GetNbins();
+  Axis_t from = axis->GetXmin();
+  Axis_t to = axis->GetXmax();
+  from = TMath::Log10(from);
+  to = TMath::Log10(to);
+  
+  Axis_t width = (to - from) / bins;
+  Axis_t *new_bins = new Axis_t[bins + 1];
+
+  for (int i = 0; i <= bins; i++) {
+    new_bins[i] = TMath::Power(10, from + i * width);
+    cout << new_bins[i] << endl;
+  }
+  axis->Set(bins, new_bins);
+  delete new_bins;
+}
+*/
