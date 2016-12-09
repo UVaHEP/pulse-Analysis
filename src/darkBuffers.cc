@@ -269,9 +269,11 @@ int main(int argc, char **argv) {
   //			101,-2.5,502.5,400,0,maxPeakRange);
   TH2F *hdPT=new TH2F("hdPeakvTime","Peak vs Delta times;#Delta time [s];ADC counts",
 		      101,-2.5,502.5,400,0,maxPeakRange); //x-axis is reset below
-  //Threshold for counted peaks, maximum needs to be dynamic
-  TH1F *hpeakthresh=new TH1F("hpeakthresh","Scan of peaks;Threshold",500,0,maxPeakRange);
-
+  //Threshold for counted peaks, maximum needs to be dynamic  -- FIXME !!!
+  TH1F *hpeakScan=new TH1F("hpeakScan","Scan of peaks;Threshold",500,0,maxPeakRange);
+  // Diagnostic histogram to keep track of 1PE search thresholds
+  TH1F *hsearchThresh;
+  
   TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
   TCanvas *tc1=new TCanvas("tc1","Peaks and Time distributions",0,450,1200,400);
   TCanvas *tcPT=new TCanvas("tcPT","Peaks v. time",0,600,600,400);
@@ -295,7 +297,8 @@ int main(int argc, char **argv) {
 
     dPk->SetBuffer(hist,timebase);
     dPk->AnalyzePeaks();
-
+    dPk->GetBackground()->Write();
+    
     int npeaks=dPk->GetNPeaks();
     totalPeaks+=npeaks;
 
@@ -312,9 +315,10 @@ int main(int argc, char **argv) {
       hdPT->SetBins(bins,TMath::Log10(xmin),TMath::Log10(xmax),400,0,iymax);
       BinLogX(hdPT);
       dPk->GetHdist()->Write();  // save a copy of data used for noise estimation
+      hsearchThresh=new TH1F("hsearchThresh","1PE search threshold;Threshold (ADC)",50,0,iymax);
       first=false;
     }
-    
+    hsearchThresh->Fill(dPk->GetSearchThreshold());
 
      
     // retrieve time ordered peak data and fill histograms
@@ -324,9 +328,9 @@ int main(int argc, char **argv) {
       dPk->GetPoint(i,x,y);
       double ycor = y - bkg->Interpolate(x);
       hpeaks->Fill(ycor);
-      for (int b = 1; b<=hpeakthresh->GetNbinsX();b++){
-	if (ycor>hpeakthresh->GetBinLowEdge(b))
-	  hpeakthresh->SetBinContent(b,hpeakthresh->GetBinContent(b)+1);	
+      for (int b = 1; b<=hpeakScan->GetNbinsX();b++){
+	if (ycor>hpeakScan->GetBinLowEdge(b))
+	  hpeakScan->SetBinContent(b,hpeakScan->GetBinContent(b)+1);	
       }
       if (i>0) {
 	hdTime->Fill(x-prev);
@@ -340,17 +344,15 @@ int main(int argc, char **argv) {
     // draw samples buffer with peaks and background
     tc->cd();
     hist->DrawCopy();
-    bkg->SetLineColor(kGreen+2);
-    bkg->SetLineWidth(3);
-    bkg->Draw("same");
+    bkg->DrawCopy("same");
     tc->Update();
 
     // draw pulse analysis plots
     tc1->cd(1);
     hpeaks->DrawCopy();
-    // peak threshold histogram
+    // peak threshold scan histogram
     tc1->cd(2);
-    hpeakthresh->DrawCopy();
+    hpeakScan->DrawCopy();
     // delta_t histogram and fits for DCR
     tc1->cd(3);
     fit2Exp(hdTime,"LQ");  
@@ -367,8 +369,9 @@ int main(int argc, char **argv) {
   
   hdTime->Write();
   hpeaks->Write();
-  hpeakthresh->Write();
+  hpeakScan->Write();
   hdPT->Write();
+  hsearchThresh->Write();
   tc1->cd(3);
   fit2Exp(hdTime,"L");
   hdTime->DrawCopy();
@@ -408,7 +411,7 @@ int main(int argc, char **argv) {
     std::cout << "Warning Fit yields negative DCR or large error" << std::endl;
     std::cout << "Afterpulse calculation skipped" << std::endl;
   }
-  // Note:  AP rate here will include cross talk if not corrected!
+  // 
   else {  // calculate afterpulse rate
     //Written in part by Grace E. Cummings, 30 July 2016
     TF1 *tf_apFcn = hdTime->GetFunction("afterPulseFit");
@@ -435,32 +438,23 @@ int main(int argc, char **argv) {
   hAp->Write();
     
 		     
-  //Find the crosstalk fraction
-  //written by Grace E. Cummings, 26 July 2016
-  int maxPeaksBin = hpeaks->GetMaximumBin(); 
-  double maxPeaksHeight = hpeaks->GetBinContent(maxPeaksBin); 
-  double xminPeaks = hpeaks->GetXaxis()->GetXmin();
-  double xmaxPeaks = hpeaks->GetXaxis()->GetXmax();
-  double xendPeaksFit = hpeaks->GetBinCenter(hpeaks->GetNbinsX());
-  double sigmaGuessBin = 5+maxPeaksBin;//parameter for fit backup
+  //Find the crosstalk fraction using the peak height distribution  
+  int maxBin = hpeaks->GetMaximumBin();
+  double amplitude = hpeaks->GetBinContent(maxBin);
+  // estimate sigma and fit limit, extend until falling edge reaches ~15% of max bin
+  hpeaks->Fit("gaus","0Q");  // do a quick fit estimate the range
+  TF1 *tmpfn = hpeaks->GetFunction("gaus");
+  double sigma = tmpfn->GetParameter(2);
+  double fitLimit = tmpfn->GetParameter(1) + sigma*1.96;
   
-  //Find point where histogram value drops bellow 7% of max. Used to end fit
-  for (int i = maxPeaksBin; i<=hpeaks->GetNbinsX();i++){
-    if (hpeaks->GetBinContent(i)<=0.07*maxPeaksHeight){
-      xendPeaksFit = hpeaks->GetBinCenter(i);
-      break;
-    }
-  }
-
-  //Creates Gaussian Fit and plots
-  double sigmaGuess = (hpeaks->GetBinCenter(sigmaGuessBin))-hpeaks->GetBinCenter(maxPeaksBin);
-  TF1 *peaksFit = new TF1("peaksFit","[0]*exp(-0.5*((x-[1])/[2])**2)",xminPeaks,xmaxPeaks);
-  peaksFit->SetParameter(0,hpeaks->GetMaximum());
-  peaksFit->SetParameter(1,hpeaks->GetBinCenter(maxPeaksBin));
-  peaksFit->SetParameter(2,sigmaGuess);
+  
+  // Do Gaussian Fit and plots
+  TF1 *peaksFit = new TF1("peaksFit","[0]*exp(-0.5*((x-[1])/[2])**2)",
+			  hpeaks->GetXaxis()->GetXmin(),hpeaks->GetXaxis()->GetXmax());
+  peaksFit->SetParameters(amplitude,hpeaks->GetBinCenter(maxBin),sigma);
   TCanvas *tc2 =new TCanvas("tc2","Samples",50,20,400,400);
   tc2->cd();
-  hpeaks->Fit("peaksFit","","",0,xendPeaksFit);
+  hpeaks->Fit("peaksFit","","",0,fitLimit);
   hpeaks->DrawCopy();
   double meanhPeaks = peaksFit->GetParameter(1);
   double meanhPeakmV = dev.adcToMv(meanhPeaks,range);
@@ -469,15 +463,9 @@ int main(int argc, char **argv) {
   double uncSigmahPeaks = peaksFit->GetParError(2);
   double sigmaOmeanhPeaks = sigmahPeaks/meanhPeaks;
 
-  //calculate Crosstalk fraction. Crosstalk peaks are what wasn't fitted
+  // Calculate Crosstalk fraction as ratio of peaks > 1.5 PE/Total
   double crosstalkFraction = 0;
   double crosstalkPeaks = 0;
-  double ourcrosstalkPeaks = 0;
-  double ourcrosstalkFraction = 0;
-  
-  ourcrosstalkPeaks = (totalPeaks-peaksFit->Integral(0,xmaxPeaks)/hpeaks->GetBinWidth(1));
-  ourcrosstalkFraction = ourcrosstalkPeaks/totalPeaks;
-
   for (int i = 1; i<=hpeaks->GetNbinsX();i++){
     if (hpeaks->GetBinCenter(i)>=meanhPeaks*1.5){
     crosstalkPeaks+=hpeaks->GetBinContent(i);
@@ -492,10 +480,6 @@ int main(int argc, char **argv) {
   hCrossTalk->SetBinError(1,sqrt(crosstalkPeaks)/totalPeaks);
   hCrossTalk->Write();
 
-  //Save crosstalk fraction our way
-  TH1F *hOurMethodCrossTalk = new TH1F("hOurMethodCrossTalk","CrossTalk Fraction by subtracting 1Pe Peak",1,-1,1);
-  hOurMethodCrossTalk->SetBinContent(1,ourcrosstalkFraction);
-  hOurMethodCrossTalk->Write();
   
   //Save mean of 1PE peak
   TH1F *h1PePeak = new TH1F("h1PePeak","1 PE Peak Mean Value",1,-1,1);
@@ -523,9 +507,8 @@ int main(int argc, char **argv) {
   std::cout << "Dark pulse rate (uncorrected): " << dcrSimple << " MHz" << std::endl;
   std::cout << "Dark pulse fit: " << dcrFit << " MHz" << std::endl;
   std::cout << "Afterpulse probability:  " << aPrate << std::endl;
-  std::cout << "Crosstalk Fraction (lightspin method): " << crosstalkFraction << std::endl;
-  //std::cout << "Our crosstalk fraction method: : "<< ourcrosstalkFraction <<std::endl;
-  std::cout << "1Pe Peak value (mV): " << meanhPeakmV << std::endl;
+  std::cout << "Crosstalk Fraction (1.5 PE threshold): " << crosstalkFraction << std::endl;
+  std::cout << "1Pe Peak value: " << meanhPeaks << " (ADC)  " << meanhPeakmV << " (mV)" << std::endl;
   std::cout << "===============================" << std::endl;
   
   std::cout<< "Close TCanvas: Peaks and Time distributions to exit" << std::endl;

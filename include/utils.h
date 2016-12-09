@@ -24,6 +24,7 @@ public:
   TH1F* GetBackground();
   int GetNPeaks();
   double CalcDarkRate(); /// simple peak rate in MHz
+  double GetSearchThreshold() {return _peThreshold;}
   void SetSearchThreshold(double peThreshold) {_peThreshold = peThreshold;}
   TH1F* GetHdist() {return (TH1F*)(hdist->Clone());}
   bool haveAnalysis;

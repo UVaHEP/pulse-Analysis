@@ -65,6 +65,7 @@ int DarkPeaker::AnalyzePeaks(){
   }
   // estimate background
   hbkg=(TH1F*)buf->Clone("background");
+  hbkg->SetTitle("background");
   FindBackground();
 
   // estimate noise and single peak height
@@ -128,11 +129,15 @@ void DarkPeaker::FindBackground(){
   cout << "FFT estimate of baseline range: " << hfft->GetMaximumBin() << endl;
   delete hfft;
   */
-  tspectrum->Background(bksource,nbins,180,TSpectrum::kBackDecreasingWindow,
+  //tspectrum->Background(bksource,nbins,180
+  int niter=40;  // Magic #! Width of clipping window is set to ~twice #bins spanned by signal pulse
+  tspectrum->Background(bksource,nbins,niter,TSpectrum::kBackDecreasingWindow,
    			TSpectrum::kBackOrder4,kTRUE,
   			TSpectrum::kBackSmoothing3,kFALSE);
   // replace 180 w/ max fourrier component or 1/2 of it, etc
   for (int i = 0; i < nbins; i++) hbkg->SetBinContent(i + 1,bksource[i]);
+  hbkg->SetLineColor(kGreen+2);
+  hbkg->SetLineWidth(3);
   delete bksource;
 }
 
