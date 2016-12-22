@@ -7,6 +7,7 @@
 #include "TString.h"
 #include "TCanvas.h"
 #include "TStyle.h"
+#include "TString.h"
 #include "TKey.h"
 #include "TMath.h"
 #include "utils.h"
@@ -269,8 +270,8 @@ int main(int argc, char **argv) {
   //			101,-2.5,502.5,400,0,maxPeakRange);
   TH2F *hdPT=new TH2F("hdPeakvTime","Peak vs Delta times;#Delta time [s];ADC counts",
 		      101,-2.5,502.5,400,0,maxPeakRange); //x-axis is reset below
-  //Threshold for counted peaks, maximum needs to be dynamic  -- FIXME !!!
-  TH1F *hpeakScan=new TH1F("hpeakScan","Scan of peaks;Threshold",500,0,maxPeakRange);
+  //Threshold for counted peaks, maximum needs to be dynamic - y axis is reset below
+  TH1F *hpeakScan=new TH1F("hpeakScan","Threshold Scan;Threshold [ADC]",500,0,maxPeakRange);
   // Diagnostic histogram to keep track of 1PE search thresholds
   TH1F *hsearchThresh;
   
@@ -285,16 +286,19 @@ int main(int argc, char **argv) {
 
   bool first=true;
   int nbuf=0;
+  TString buftitle;
   
   for (auto &waveform : data) {
     nbuf++;
     std::cout << "Processing buffer: " << nbuf << std::endl;
+    buftitle.Form("Buffer[%d]",nbuf);
+
     //std::cout << "Bins in hist: " << waveform.size() << std::endl;
-    hist = new TH1F("pulses", "pulses", waveform.size(), 0, waveform.size());
+    hist = new TH1F("pulses", buftitle, waveform.size(), 0, waveform.size());
     for (int i = 0; i < waveform.size(); i++) {
       hist->SetBinContent(i, -1*waveform[i]);
     }
-
+    
     dPk->SetBuffer(hist,timebase);
     dPk->AnalyzePeaks();
     dPk->GetBackground()->Write();
@@ -305,16 +309,16 @@ int main(int argc, char **argv) {
     
     if (first) {
       int iymax=(int)hist->GetMaximum();
-      iymax=iymax*1.1;
+      iymax=iymax*1.6;
       iymax-=iymax%1000;
       hpeaks->SetBins(200,0,iymax);
-      //hdPT->SetBins(101,-2.5,502.5,400,0,iymax);
       double xmin=6e-9;
       double xmax=5e-6;
       int bins=(int)(TMath::Log10(xmax/xmin)*10);
       hdPT->SetBins(bins,TMath::Log10(xmin),TMath::Log10(xmax),400,0,iymax);
       BinLogX(hdPT);
-      dPk->GetHdist()->Write();  // save a copy of data used for noise estimation
+      hpeakScan->SetBins(500,0,iymax);
+      dPk->GetHdist()->Write();  // save a copy of data used for noise estimation in 1st buffer
       hsearchThresh=new TH1F("hsearchThresh","1PE search threshold;Threshold (ADC)",50,0,iymax);
       first=false;
     }

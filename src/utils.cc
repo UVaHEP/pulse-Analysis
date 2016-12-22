@@ -145,8 +145,8 @@ void DarkPeaker::FindBackground(){
 // find noise from distribution pulse height spectrum
 void DarkPeaker::FindNoise(){
   // background subtracted sample data
-  hdist->SetBins(100,0,buf->GetMaximum());
-  hscan->SetBins(100,0,buf->GetBinContent(buf->GetMaximumBin()));
+  hdist->SetBins(100,0,buf->GetMaximum());  // distribution of ADC counts
+  hscan->SetBins(100,0,buf->GetMaximum()/3);  // ADC samples above threshold
   
   for (int i = 1; i <= buf->GetNbinsX(); i++){
     double val=buf->GetBinContent(i) - hbkg->GetBinContent(i);
@@ -162,15 +162,14 @@ void DarkPeaker::FindNoise(){
   double binwid=hdist->GetBinWidth(1);
  
   //limits and relevant values
-  int maxbinthresh = hscan->GetMaximumBin();
-  double maxheightthresh = hscan->GetBinContent(maxbinthresh);
+  double maxheightthresh = hscan->GetMaximum();
   double xmaxThres = hscan->GetXaxis()->GetXmax();
   double xminThres = hscan->GetXaxis()->GetXmin();
   double xendfit= hscan->GetBinCenter(hscan->GetNbinsX());
   
   //Finds bin with contents <= 10% of maximum. This serves as end of fit
-  for (int i = maxbinthresh; i<=hscan->GetNbinsX(); i++){
-    if (hscan->GetBinContent(i)<=0.1*maxheightthresh || i>=maxbinthresh+10){
+  for (int i = hscan->GetMaximumBin(); i<=hscan->GetNbinsX(); i++){
+    if (hscan->GetBinContent(i)<=0.33*maxheightthresh){ // || i>=maxbinthresh+10){
       xendfit = hscan->GetBinCenter(i);
       break;
     }
@@ -179,7 +178,7 @@ void DarkPeaker::FindNoise(){
   //Creates Exponential fit of hscan to find lambda value. Fits the background contributions
   TF1 *thresFit = new TF1("thresFit", "expo", xminThres, xmaxThres);
   gStyle->SetOptFit(0001);
-  hscan->Fit("thresFit","","",0,xendfit);
+  hscan->Fit("thresFit","","",hscan->GetBinCenter(2),xendfit);
   tcD->cd();
   hscan->DrawCopy();
   //gStyle->SetOptStat(0);
