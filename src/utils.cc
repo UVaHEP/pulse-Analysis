@@ -22,23 +22,23 @@ DarkPeaker::DarkPeaker(double peThreshold) {
   // these will be defined in FindNoise()
   hdist=new TH1F("hdist","Background subtracted ADC distribution",100,0,100);
   hscan=new TH1F("hscan","Threshold scan",100,0,100);
+  hFWHM=new TH1F("hFWHM","FWHM of peaks in bins",100,0,20);
 }
 
 void DarkPeaker::Reset(){
   // check if we have run the analyze method and reset storage
   if (haveAnalysis){
     delete hbkg;
-    delete peaksX;
-    delete peaksY;
-    delete bkgCorrectedY;
+    peaksX.clear();
+    peaksY.clear();
+    bkgCorrectedY.clear();
+    pIntegrals.clear();
+    hFWHM->Reset();
     delete deltaT;
     haveAnalysis=false;
   }
   buf=0;
   hbkg=0;
-  peaksX=0;
-  peaksY=0;
-  bkgCorrectedY=0;
   deltaT=0;
   npeaks=0;
   haveAnalysis=false;
@@ -53,6 +53,11 @@ void DarkPeaker::SetBuffer(TH1F *newbuf, double sampleTime){
 
 int DarkPeaker::GetNPeaks(){return npeaks;}
 TH1F* DarkPeaker::GetBackground(){return hbkg;}
+void DarkPeaker::DumpPeaks(){
+  for (int i=0; i<=npeaks; i++){
+    cout << peaksX[i] << " " << peaksY[i] << endl;
+  }
+}
 
 TSPECTFLOAT* DarkPeaker::GetTSpectrumX(){ return tspectrum->GetPositionX();}
 TSPECTFLOAT* DarkPeaker::GetTSpectrumY(){ return tspectrum->GetPositionY();}
@@ -89,11 +94,9 @@ int DarkPeaker::AnalyzePeaks(){
   TSPECTFLOAT *xpeaks = tspectrum->GetPositionX();
   TSPECTFLOAT *ypeaks = tspectrum->GetPositionY();
   TMath::Sort(npeaks, xpeaks, index, kFALSE);  // index sort by timestamp
-  peaksX=new double[npeaks];
-  peaksY=new double[npeaks];
   for (int i=0;i<npeaks;i++) {
-    peaksX[i] = xpeaks[index[i]];
-    peaksY[i] = ypeaks[index[i]];
+    peaksX.push_back( xpeaks[index[i]] );
+    peaksY.push_back( ypeaks[index[i]] );
   }  
   haveAnalysis=true;
   return 0;
@@ -108,7 +111,89 @@ void DarkPeaker::GetPoint(int i, double &x, double &y) const{
   y=peaksY[i];
 }
 
+void DarkPeaker::GetIntegral(int i, double &x, double &y) const{
+  if (i>=pIntegrals.size()) {
+    cout << "Warning: nIntegrals= " << pIntegrals.size()
+	 << " index: " << i << " requested" << endl;
+  }
+  x=peaksX[i];
+  y=pIntegrals[i];
+}
 
+/// Calculate simple integrals of peaks by adding bkg-subtracted bins in range
+/// peak-iLow to peak+iHigh
+/// for now we select only isolated peaks (eg. no other peaks in the integration window)
+/// we can update this with fits, or some range that extends to include overlapping peaks
+void DarkPeaker::Integrate(int iLow, int iHigh, bool selectIsolated){
+  for (int i=0; i<peaksX.size(); i++){
+    double x=peaksX[i];
+    int binX=buf->FindBin(x);
+    int bLow=binX-iLow;
+    int bHigh=binX+iHigh;
+    if ( (binX<iLow+1)||(binX+iHigh > buf->GetNbinsX()) ) continue;  // we are too close to an edge to integrate
+    // enforce isolation here by searching for peaks to right/left side
+    bool leftPeak = i>0 && binX-buf->FindBin(peaksX[i-1]) <= iLow;
+    bool rightPeak = i<peaksX.size()-1 && buf->FindBin(peaksX[i+1])-binX <= iHigh;
+    if (rightPeak || leftPeak){
+      //cout << "****** not isolated ******" << endl;
+      continue;  // this peak is not isolated
+    }
+    double pulseInteg=buf->Integral(bLow,bHigh) - hbkg->Integral(bLow,bHigh);
+    pIntegrals.push_back( pulseInteg );
+    //cout << "integral " << x << " " << pulseInteg << endl;
+    hFWHM->Fill(FWHM(i)); // calc FWHM for peak[i]
+  }
+}
+
+double DarkPeaker::FWHM(int i) const{
+  if (i>=npeaks) {
+    cout << "(FWHM) Warning: npoints= " << npeaks
+	 << " index: " << i << " requested" << endl;
+  }
+  int ipeak=buf->FindBin(peaksX[i]);
+  double ypeak=peaksY[i]-hbkg->GetBinContent(ipeak);
+  int ilow=1,ihigh=buf->GetNbinsX();
+  double xlow,xhigh;
+  // walk left, find first bin < ypeak/2
+  for (int i=ipeak-1; i>0 ;i--){
+    if ( buf->GetBinContent(i)-hbkg->GetBinContent(i) < ypeak/2 ) {
+      ilow=i;
+      break;
+    }
+  }
+  double x1=buf->GetBinCenter(ilow);
+  double x2=buf->GetBinCenter(ilow+1);
+  double y1=buf->GetBinContent(ilow)-hbkg->GetBinContent(ilow);
+  double y2=buf->GetBinContent(ilow+1)-hbkg->GetBinContent(ilow+1);
+  if (y2<y1) xlow=x1;
+  else { //interpolate
+    xlow = (ypeak/2-y1)*(x2-x1)/(y2-y1) + x1;
+  }
+  // walk right, find first bin < ypeak/2
+  for (int i=ipeak+1; i<=buf->GetNbinsX(); i++){
+    if ( buf->GetBinContent(i)-hbkg->GetBinContent(i) < ypeak/2 ) {
+      ihigh=i;
+      break;
+    }
+  }
+  x1=buf->GetBinCenter(ihigh-1);
+  x2=buf->GetBinCenter(ihigh);
+  y1=buf->GetBinContent(ihigh-1)-hbkg->GetBinContent(ihigh-1);
+  y2=buf->GetBinContent(ihigh)-hbkg->GetBinContent(ihigh);
+  if (y2>y1) xhigh=x2;
+  else {
+    xhigh = (ypeak/2-y2)*(x2-x1)/(y2-y1) + x1;
+  }
+  //cout << "xlow/x/xhigh " << xlow <<"/"<< peaksX[i]<<"/"<<xhigh<<endl;
+  return xhigh-xlow;
+}
+
+TH1F* DarkPeaker::GetFWHM() const{
+  if (pIntegrals.size()==0)
+    cout << "Call DarkPeaker::Integrate first to calculate FWHM distribution" << endl;
+  return (TH1F*) hFWHM->Clone();
+}
+  
 void DarkPeaker::FindBackground(){
   tcD->cd();
   int nbins=buf->GetNbinsX();

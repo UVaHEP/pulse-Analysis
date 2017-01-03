@@ -19,17 +19,8 @@
 
 using namespace picoscope;
 
-void fitExp(TH1F *h, TString opt="L"){
-  h->Fit("expo",opt,"",h->GetBinCenter(8),h->GetXaxis()->GetXmax());
-  TF1 *fun2=new TF1(*(h->GetFunction("expo")));
-  fun2->SetName("expo2");
-  fun2->SetRange(h->GetXaxis()->GetXmin(),h->GetXaxis()->GetXmax());
-  fun2->SetLineStyle(2);
-  fun2->Draw("same");
-  h->GetListOfFunctions()->Add(fun2);
-}
 
-// fit a double exponential to separate DCR and afterpulsing
+// fit a double exponential to separate DCR and afterpulsing in Delta_time distribution
 void fit2Exp(TH1F *h, TString opt="L"){
   // 1st fit for DCR using long delta time tail
   int startBin = 8;  // HACK!!! Start this fit after AP peak
@@ -51,7 +42,7 @@ void fit2Exp(TH1F *h, TString opt="L"){
   b2=20*b1;  // HACK!!! Assume much faster fall off of AP spectrum
   
   TF1 *afterPulseFit = new TF1("afterPulseFit","exp([0]+[1]*x)+exp([2]+[3]*(x-[4]))",xAtMax, h->GetXaxis()->GetXmax());
-  afterPulseFit->SetParNames("A_{1}","#Lamba_{DCR}","A_{2}","#Lamba_{2}");
+  afterPulseFit->SetParNames("A_{1}","Lamba_{DCR}","A_{2}","Lamba_{2}");
   afterPulseFit->SetParameters(a1,b1,a2,b2,xAtMax);
   afterPulseFit->FixParameter(4,xAtMax);
   h->Fit("afterPulseFit",opt,"",xAtMax,h->GetXaxis()->GetXmax());
@@ -80,12 +71,12 @@ void setupScope(ps5000a &dev,   chRange &range, int samples) {
   dev.setPostTriggerSamples(samples/2);
 }
 
+// fix me to work for a specified number of buffers and remove some code below
 void acquireBuffers(ps5000a &dev, vector <vector<short> > &data){
   dev.prepareBuffers();
   dev.captureBlock(); 
   data = dev.getWaveforms();
 }
-
 
 
 Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
@@ -133,10 +124,12 @@ Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
 }
 
 int main(int argc, char **argv) {
-
   TString outfn="darkBuffers.root";
-  int samples = 40000;
+  int samples = 40000;  // default samples and buffer numbers
   int nbuffers = 50;
+  int iLimitL=5;  // pulse integration limits in bin counts [5]
+  int iLimitH=18; // eg peak-ilimitL to peak+iLimitH [18]
+  int nbufUser=0;
   double peThreshold=0;
   int opt;
   bool quit=false;
@@ -150,7 +143,7 @@ int main(int argc, char **argv) {
       samples = atoi(optarg);
       break;
     case 'b':
-      nbuffers=atoi(optarg);
+      nbufUser=atoi(optarg);
       break;
     case 'u':
       // Capture first waveform, then allow the user to select a threshold via GUI
@@ -203,7 +196,8 @@ int main(int argc, char **argv) {
   vector <vector<short> > data;
   float timebase;
   
-  if (fileToOpen.Length()==0){  
+  if (fileToOpen.Length()==0){
+    if (nbufUser>0) nbuffers=nbufUser;
     dev.open(picoscope::PS_12BIT);
     setupScope(dev, range, samples); 
     timebase = dev.timebaseNS();
@@ -240,6 +234,7 @@ int main(int argc, char **argv) {
 	data.push_back(buf);
 	samples = hbuf->GetNbinsX();
       }
+      if (nbufUser>0 && nbuffers>=nbufUser) break;
     }
   }
   
@@ -265,6 +260,8 @@ int main(int argc, char **argv) {
   // pulse height distribution
   float maxPeakRange=35000; // HACK!!!!
   TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,maxPeakRange);  // y axis is reset below
+  TH1F* hintegrals=new TH1F("hintegrals","Area of isolated peaks",200,0,maxPeakRange); // also reset below
+  TH1F* hFWHM=0;
   // 2D plot of pulse heights vs detla time
   //TH2F *hdPT=new TH2F("hdPeakvTime","Peak vs Delta times;x [2 ns];ADC counts",
   //			101,-2.5,502.5,400,0,maxPeakRange);
@@ -305,13 +302,13 @@ int main(int argc, char **argv) {
     
     int npeaks=dPk->GetNPeaks();
     totalPeaks+=npeaks;
-
     
     if (first) {
       int iymax=(int)hist->GetMaximum();
       iymax=iymax*1.6;
       iymax-=iymax%1000;
       hpeaks->SetBins(200,0,iymax);
+      hintegrals->SetBins(200,0,iymax*(iLimitL+iLimitH)/2);
       double xmin=6e-9;
       double xmax=5e-6;
       int bins=(int)(TMath::Log10(xmax/xmin)*10);
@@ -330,7 +327,7 @@ int main(int argc, char **argv) {
     TH1F *bkg=dPk->GetBackground();
     for (int i=0;i<npeaks;i++){
       dPk->GetPoint(i,x,y);
-      double ycor = y - bkg->Interpolate(x);
+      double ycor = y - bkg->Interpolate(x);  // correct bin count for baseline shift
       hpeaks->Fill(ycor);
       for (int b = 1; b<=hpeakScan->GetNbinsX();b++){
 	if (ycor>hpeakScan->GetBinLowEdge(b))
@@ -338,12 +335,20 @@ int main(int argc, char **argv) {
       }
       if (i>0) {
 	hdTime->Fill(x-prev);
-	//hdPT->Fill(x-prev,y);  // if using linead x-binning
+	//hdPT->Fill(x-prev,y);  // if using linear x-binning
 	hdPT->Fill((x-prev)*timebase,y); // for log x-binning 
       }
       prev = x;
     }
-
+    //dPk->DumpPeaks();
+    // now fill the histogram of integrate peaks
+    dPk->Integrate(iLimitL,iLimitH);
+    if (hFWHM==0) hFWHM=dPk->GetFWHM();
+    else hFWHM->Add(dPk->GetFWHM());
+    for (int i=0; i<dPk->GetNIntegrals(); i++){
+      dPk->GetIntegral(i,x,y);
+      hintegrals->Fill(y);
+    }
     
     // draw samples buffer with peaks and background
     tc->cd();
@@ -373,9 +378,11 @@ int main(int argc, char **argv) {
   
   hdTime->Write();
   hpeaks->Write();
+  hintegrals->Write();
   hpeakScan->Write();
   hdPT->Write();
   hsearchThresh->Write();
+  hFWHM->Write();
   tc1->cd(3);
   fit2Exp(hdTime,"L");
   hdTime->DrawCopy();
