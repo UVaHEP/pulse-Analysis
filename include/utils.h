@@ -9,44 +9,55 @@
 #include <vector>
 using std::vector;
 
+// hack to handle changes between ROOT versions
 //#define TSPECTFLOAT Float_t  // ROOT 5
 #define TSPECTFLOAT Double_t // ROOT 6
 
 
-//class DarkPeaker : public TSpectrum { 
+//class DarkPeaker : public TSpectrum { // alternative design
 class DarkPeaker{ 
 public:
   DarkPeaker(double peThreshold=-1e20);
   ~DarkPeaker(){;}
-  void Reset();
-  void SetBuffer(TH1F *newbuf, double sampleTime);
+
   int AnalyzePeaks();
+  double CalcDarkRate(); /// simple peak rate in MHz
+  void DumpPeaks();
   void FindNoise();
   void FindBackground();
-  TH1F* GetBackground();
-  int GetNPeaks();
-  void DumpPeaks();
-  double CalcDarkRate(); /// simple peak rate in MHz
-  double GetSearchThreshold() {return _peThreshold;}
-  void SetSearchThreshold(double peThreshold) {_peThreshold = peThreshold;}
+  /// calc integrals and FWHM for isolated peaks
+  /// nLow, nHigh are bin ranges to left,right of peak
+  void Integrate(int nLow, int nHigh, bool selectIsolated=true);
+  
+  TH1F* GetBackground() const {return hbkg;}
+  TH1F* GetBuffer() const {return buf;}
+  double GetFWHM(int i) const;
+  TH1F* GetFWHMhist() const;
   TH1F* GetHdist() {return (TH1F*)(hdist->Clone());}
-  bool haveAnalysis;
+  TH1F* GetHscan() {return (TH1F*)(hscan->Clone());}
+  void GetIntegral(int i, double &x, double &y) const; 
+  int GetNIntegrals(){ return pIntegrals.size(); }
+  int GetNPeaks() const {return npeaks;}
+  void GetPoint(int i, double &x, double &y) const;  // return time ordered peaks data
+  double GetSearchThreshold() {return _peThreshold;}
   TSPECTFLOAT* GetTSpectrumX();  // get arrays from tspectrum
   TSPECTFLOAT* GetTSpectrumY();
-  void GetPoint(int i, double &x, double &y) const;  // return time ordered peaks data
-  void Integrate(int nLow, int nHigh, bool selectIsolated=true);
-  int GetNIntegrals(){ return pIntegrals.size(); }
-  void GetIntegral(int i, double &x, double &y) const; 
-  double FWHM(int i) const; /// calc FWHM for peak i
-  TH1F* GetFWHM() const;
+  
+  void Reset();
+  void SetBuffer(TH1F *newbuf, double sampleTime);
+  void SetSearchThreshold(double peThreshold) {_peThreshold = peThreshold;}
+
+private:
+  double CalcFWHM(int i) const; /// calc FWHM for peak i
   
  private:
+  bool haveAnalysis;
   TSpectrum *tspectrum;
-  TH1F *buf;
-  TH1F *hbkg;
+  TH1F *buf;    // the picoscope buffer
+  TH1F *hbkg;   // background fit from TSpectrum
   TH1F *hdist;  // frequency distribution of ADC samples
   TH1F *hscan;  // count of samples above threshold
-  TH1F *hFWHM; 
+  TH1F *hFWHM;  // distribution of pulse widths (for no overlapping pulses)
   TF1  *tfNoise;
   int npeaks;
   double _peThreshold;
@@ -55,12 +66,13 @@ public:
   vector<double> peaksY;
   vector<double> bkgCorrectedY;
   vector<double> pIntegrals;
+  vector<double> pFWHM;
   TSPECTFLOAT *deltaT;
   double dT;
   TCanvas *tcD;
 };
 
-
+// helper functions
 TString getoutput(TString cmd);
 void BinLogX(TH1*h);
 

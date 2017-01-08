@@ -19,10 +19,9 @@ DarkPeaker::DarkPeaker(double peThreshold) {
   Reset();
   if (peThreshold) _peThreshold=peThreshold;
   tcD = new TCanvas("tcD","Dark Peak Analysis");
-  // these will be defined in FindNoise()
+  // x-axis limits for these will be defined in FindNoise()
   hdist=new TH1F("hdist","Background subtracted ADC distribution",100,0,100);
-  hscan=new TH1F("hscan","Threshold scan",100,0,100);
-  hFWHM=new TH1F("hFWHM","FWHM of peaks in bins",100,0,20);
+  hscan=new TH1F("hscan","Threshold scan",100,0,100);  // samples above ADC count threshold
 }
 
 void DarkPeaker::Reset(){
@@ -33,7 +32,7 @@ void DarkPeaker::Reset(){
     peaksY.clear();
     bkgCorrectedY.clear();
     pIntegrals.clear();
-    hFWHM->Reset();
+    pFWHM.clear();
     delete deltaT;
     haveAnalysis=false;
   }
@@ -51,8 +50,7 @@ void DarkPeaker::SetBuffer(TH1F *newbuf, double sampleTime){
   dT=sampleTime;
 }
 
-int DarkPeaker::GetNPeaks(){return npeaks;}
-TH1F* DarkPeaker::GetBackground(){return hbkg;}
+
 void DarkPeaker::DumpPeaks(){
   for (int i=0; i<=npeaks; i++){
     cout << peaksX[i] << " " << peaksY[i] << endl;
@@ -115,15 +113,29 @@ void DarkPeaker::GetIntegral(int i, double &x, double &y) const{
   if (i>=pIntegrals.size()) {
     cout << "Warning: nIntegrals= " << pIntegrals.size()
 	 << " index: " << i << " requested" << endl;
+    x=0;
+    y=0;
+    return;
   }
   x=peaksX[i];
   y=pIntegrals[i];
 }
 
+double DarkPeaker::GetFWHM(int i) const{
+  if (i>=pFWHM.size()) {
+    cout << "Warning: nFWHM= " << pFWHM.size()
+	 << " index: " << i << " requested" << endl;
+    return 0;
+  }
+  return pFWHM[i];
+}
+
+
+
 /// Calculate simple integrals of peaks by adding bkg-subtracted bins in range
 /// peak-iLow to peak+iHigh
 /// for now we select only isolated peaks (eg. no other peaks in the integration window)
-/// we can update this with fits, or some range that extends to include overlapping peaks
+/// we can update this with fits, or something that extends to include overlapping peaks
 void DarkPeaker::Integrate(int iLow, int iHigh, bool selectIsolated){
   for (int i=0; i<peaksX.size(); i++){
     double x=peaksX[i];
@@ -141,11 +153,12 @@ void DarkPeaker::Integrate(int iLow, int iHigh, bool selectIsolated){
     double pulseInteg=buf->Integral(bLow,bHigh) - hbkg->Integral(bLow,bHigh);
     pIntegrals.push_back( pulseInteg );
     //cout << "integral " << x << " " << pulseInteg << endl;
-    hFWHM->Fill(FWHM(i)); // calc FWHM for peak[i]
+    double fwhm=CalcFWHM(i);
+    pFWHM.push_back( fwhm );  // for each pulse integral calculate corresponding FWHM
   }
 }
 
-double DarkPeaker::FWHM(int i) const{
+double DarkPeaker::CalcFWHM(int i) const{
   if (i>=npeaks) {
     cout << "(FWHM) Warning: npoints= " << npeaks
 	 << " index: " << i << " requested" << endl;
@@ -188,18 +201,13 @@ double DarkPeaker::FWHM(int i) const{
   return xhigh-xlow;
 }
 
-TH1F* DarkPeaker::GetFWHM() const{
-  if (pIntegrals.size()==0)
-    cout << "Call DarkPeaker::Integrate first to calculate FWHM distribution" << endl;
-  return (TH1F*) hFWHM->Clone();
-}
-  
 void DarkPeaker::FindBackground(){
   tcD->cd();
   int nbins=buf->GetNbinsX();
   TSPECTFLOAT *bksource=new TSPECTFLOAT[nbins];
   for (int i = 0; i < nbins; i++) bksource[i]=buf->GetBinContent(i + 1);
   /*
+  // https://stackoverflow.com/questions/4364823/how-do-i-obtain-the-frequencies-of-each-value-in-an-fft
   TH1 *hfft;
   hfft=buf->FFT(0,"RE");
   double sum=0, sumw=0;
@@ -230,8 +238,8 @@ void DarkPeaker::FindBackground(){
 // find noise from distribution pulse height spectrum
 void DarkPeaker::FindNoise(){
   // background subtracted sample data
-  hdist->SetBins(100,0,buf->GetMaximum());  // distribution of ADC counts
-  hscan->SetBins(100,0,buf->GetMaximum()/3);  // ADC samples above threshold
+  hdist->SetBins(200,0,buf->GetMaximum());  // distribution of ADC counts
+  hscan->SetBins(200,0,buf->GetMaximum()/3);  // ADC samples above threshold
   
   for (int i = 1; i <= buf->GetNbinsX(); i++){
     double val=buf->GetBinContent(i) - hbkg->GetBinContent(i);
@@ -252,7 +260,7 @@ void DarkPeaker::FindNoise(){
   double xminThres = hscan->GetXaxis()->GetXmin();
   double xendfit= hscan->GetBinCenter(hscan->GetNbinsX());
   
-  //Finds bin with contents <= 10% of maximum. This serves as end of fit
+  //Finds bin with contents <= XX% of maximum. This serves as end of fit
   for (int i = hscan->GetMaximumBin(); i<=hscan->GetNbinsX(); i++){
     if (hscan->GetBinContent(i)<=0.33*maxheightthresh){ // || i>=maxbinthresh+10){
       xendfit = hscan->GetBinCenter(i);

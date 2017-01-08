@@ -211,10 +211,7 @@ int main(int argc, char **argv) {
   
     dev.setCaptureCount(nbuffers);
     acquireBuffers(dev,data);
-    //dev.prepareBuffers();
-    //dev.captureBlock(); 
     dev.close();
-    //data = dev.getWaveforms();
   }
   else { // read buffers from file
     nbuffers = 0;
@@ -241,7 +238,7 @@ int main(int argc, char **argv) {
 
   TFile f(outfn, "RECREATE");
   std::cout << "writing waveforms..." << std::endl;
-  TH1F *hist = NULL;
+  TH1F *hist = 0;
 
   TH1F *dT  = new  TH1F("dT", "Time Steps [ns]", 1,0,1);
   dT->Fill(0.0, timebase);
@@ -261,15 +258,15 @@ int main(int argc, char **argv) {
   float maxPeakRange=35000; // HACK!!!!
   TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,maxPeakRange);  // y axis is reset below
   TH1F* hintegrals=new TH1F("hintegrals","Area of isolated peaks",200,0,maxPeakRange); // also reset below
-  TH1F* hFWHM=0;
-  // 2D plot of pulse heights vs detla time
+  TH1F* hFWHM=new TH1F("hFWHM","FWHM of peaks in bins",100,0,20);
+  // 2D plot of pulse heights vs delta time
   //TH2F *hdPT=new TH2F("hdPeakvTime","Peak vs Delta times;x [2 ns];ADC counts",
   //			101,-2.5,502.5,400,0,maxPeakRange);
   TH2F *hdPT=new TH2F("hdPeakvTime","Peak vs Delta times;#Delta time [s];ADC counts",
 		      101,-2.5,502.5,400,0,maxPeakRange); //x-axis is reset below
   //Threshold for counted peaks, maximum needs to be dynamic - y axis is reset below
   TH1F *hpeakScan=new TH1F("hpeakScan","Threshold Scan;Threshold [ADC]",500,0,maxPeakRange);
-  // Diagnostic histogram to keep track of 1PE search thresholds
+  // Diagnostic histogram to keep track of TSpectrum search thresholds
   TH1F *hsearchThresh;
   
   TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
@@ -315,7 +312,8 @@ int main(int argc, char **argv) {
       hdPT->SetBins(bins,TMath::Log10(xmin),TMath::Log10(xmax),400,0,iymax);
       BinLogX(hdPT);
       hpeakScan->SetBins(500,0,iymax);
-      dPk->GetHdist()->Write();  // save a copy of data used for noise estimation in 1st buffer
+      dPk->GetHdist()->Write();  
+      dPk->GetHscan()->Write();  // save a copy of data used for noise estimation in 1st buffer
       hsearchThresh=new TH1F("hsearchThresh","1PE search threshold;Threshold (ADC)",50,0,iymax);
       first=false;
     }
@@ -341,13 +339,13 @@ int main(int argc, char **argv) {
       prev = x;
     }
     //dPk->DumpPeaks();
+
     // now fill the histogram of integrate peaks
     dPk->Integrate(iLimitL,iLimitH);
-    if (hFWHM==0) hFWHM=dPk->GetFWHM();
-    else hFWHM->Add(dPk->GetFWHM());
     for (int i=0; i<dPk->GetNIntegrals(); i++){
       dPk->GetIntegral(i,x,y);
       hintegrals->Fill(y);
+      hFWHM->Fill(dPk->GetFWHM(i));
     }
     
     // draw samples buffer with peaks and background
