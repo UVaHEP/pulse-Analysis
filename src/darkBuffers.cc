@@ -219,7 +219,6 @@ int main(int argc, char **argv) {
     TIter nextkey(gDirectory->GetListOfKeys());
     TKey *key;
     vector<short> buf;
-    timebase = ((TH1F*)(infile.Get("dT")))->GetBinContent(1);
     while ( (key = (TKey*)nextkey()) ) {
       TObject *obj = key->ReadObj();
       if ( TString(obj->GetName())=="pulses" ){
@@ -233,6 +232,11 @@ int main(int argc, char **argv) {
       }
       if (nbufUser>0 && nbuffers>=nbufUser) break;
     }
+    if (nbuffers==0) {
+      std::cout << "No buffers found in input file.  Exiting..." << std::endl;
+      return 1;
+    }
+    timebase = ((TH1F*)(infile.Get("dT")))->GetBinContent(1);
   }
   
 
