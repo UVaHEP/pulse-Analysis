@@ -126,7 +126,8 @@ Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
 int main(int argc, char **argv) {
   TString outfn="darkBuffers.root";
   int samples = 40000;  // default samples and buffer numbers
-  int nbuffers = 50;
+  int nbuffers = 50;    // default number of buffers to take
+  int nbuffersWrite=10; // default number of buffers to write
   int iLimitL=5;  // pulse integration limits in bin counts [5]
   int iLimitH=18; // eg peak-ilimitL to peak+iLimitH [18]
   int nbufUser=0;
@@ -137,7 +138,7 @@ int main(int argc, char **argv) {
   bool userThreshold = false; 
   chRange range = PS_20MV;
   TString fileToOpen;
-  while ((opt = getopt(argc, argv, "s:b:o:P:R:f:uhq0")) != -1) {
+  while ((opt = getopt(argc, argv, "s:b:o:P:R:f:uhq0a")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
@@ -172,6 +173,8 @@ int main(int argc, char **argv) {
     case '0':   // turn off graphics
       quiet=true;    // not implemented
       break;
+    case 'a':
+      nbuffersWrite=1000000; // write "all" buffers
     case 'f':   // loads in a file, ignores picoscope stuff
       fileToOpen = optarg;
       std::cout<<"reading data from: " <<fileToOpen<<std::endl;      
@@ -181,6 +184,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "\nUsage: %s [options]\n",argv[0]);
       fprintf(stderr, " -s nsamples[40000] : number of samples per buffer\n");
       fprintf(stderr, " -b nbuffers[50] : number of buffers\n");
+      fprintf(stderr, " -a write out all buffers. 10 are written as default\n");
       fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
       fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
       fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_20MV,PS_50MV]\n");
@@ -299,7 +303,7 @@ int main(int argc, char **argv) {
     
     dPk->SetBuffer(hist,timebase);
     dPk->AnalyzePeaks();
-    dPk->GetBackground()->Write();
+    if (nbuf<=nbuffersWrite) dPk->GetBackground()->Write();
     
     int npeaks=dPk->GetNPeaks();
     totalPeaks+=npeaks;
@@ -374,7 +378,7 @@ int main(int argc, char **argv) {
     hdPT->DrawCopy("col");
     tcPT->Update();
         
-    hist->Write(); 
+    if (nbuf<=nbuffersWrite) hist->Write(); 
     delete hist;
   }   // end of loop over buffers
   
