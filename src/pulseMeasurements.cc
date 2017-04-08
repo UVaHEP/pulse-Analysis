@@ -7,15 +7,18 @@
 #include <TApplication.h>
 #include <TCanvas.h>
 #include <TStyle.h>
+#include <TVectorD.h>
 #include <iostream>
 #include <getopt.h>
 #include <stdio.h>
 
 using namespace picoscope;
+using std::cout;
+using std::endl;
 
 
-void PHD(TH1F* h, TH1F* p, int firstbin, int lastbin){
-  p->Fill(h->Integral(firstbin,lastbin));
+void PHD(TH1F* h, TH1F* p, int firstbin, int width){
+  p->Fill(h->Integral(firstbin,firstbin+width-1));
 }
 
 
@@ -48,12 +51,14 @@ int main(int argc, char **argv) {
   int z0=0;              // starting point for background integral
   int xlow=samples/2;   // starting point for pulse integral
   int xwid=15;          // bins to integrate
+  const int nBaseline=20; // number of bins to use to estimate baseline
   int opt;
+  bool findWindow=false;   // find the integration window automatically
   bool quit=false;
   bool quiet=false;
   TString outfn="pulsed.root";
   
-  while ((opt = getopt(argc, argv, "b:c:S:n:o:hq0x:w:z:")) != -1) {
+  while ((opt = getopt(argc, argv, "b:c:S:n:o:hq0xa:w:z:")) != -1) {
     switch (opt) {
     case 'b':
       nbuffers=atoi(optarg);
@@ -66,7 +71,7 @@ int main(int argc, char **argv) {
       break;
     case 'o':
       outfn = optarg;
-      std::cout<<"set outfn " << outfn<<std::endl;
+      cout<<"set outfn " << outfn<<endl;
       break;
     case 'z':
       z0=atoi(optarg);
@@ -79,6 +84,9 @@ int main(int argc, char **argv) {
       break;
     case 'q':   // exit when finished
       quit=true;
+      break;
+    case 'a':
+      findWindow="true";
       break;
     case '0':   // turn off graphics
       quiet=true;  
@@ -115,7 +123,7 @@ int main(int argc, char **argv) {
   int wavSaved=0;
   
   for (int i = 0; i < nrepeat; i++) {
-    std::cout << "Capturing Block:" << i << std::endl;     
+    cout << "Capturing Block:" << i << endl;     
     dev.captureBlock();
 
     vector <vector<short> > &data = dev.getWaveforms();
@@ -129,9 +137,25 @@ int main(int argc, char **argv) {
       }
       hsum->Add(hsamp);
 
+
+      if (i==0 && findWindow){  //use first buffer to figure out the pulse integration window
+	double baseline=hsum->Integral(1,nBaseline)/nBaseline;
+	int maxbin=hsum->GetMaximumBin();
+	double max=hsum->GetBinContent(maxbin)-baseline; 
+	// search find locations of ~10% peak height
+	int left=hsum->FindFirstBinAbove(max/10+baseline);
+	int right=hsum->FindLastBinAbove(max/10+baseline);
+	// set window to 2x this "width"
+	xwid=(right-left)*2;
+	xlow=maxbin-(maxbin-left)*2;
+	if (xlow <= nBaseline) cout << "WARNING: pulse is too close to background area, move to the right" << endl;
+      }
+      if (i==0)
+	cout << "Setting integration window ( " << xlow << " , " << xwid << " )" << endl;
+      
       //Note! Currently this is in ADC  counts, not anything else
-      PHD(hsamp,hpulses1,xlow,xlow+xwid);
-      PHD(hsamp,hpulses0,z0,z0+xwid);
+      PHD(hsamp,hpulses1,xlow,xwid);  // integrals are inclusive over bins limits
+      PHD(hsamp,hpulses0,z0,xwid);
       if (wavSaved<nsave) {
 	waveForms[wavSaved]=
 	  (TH1F*)hsamp->Clone(TString::Format("wave%02d",wavSaved));
@@ -172,10 +196,16 @@ int main(int argc, char **argv) {
   hpersist->Write();
   hpulses0->Write();
   hpulses1->Write(); 
-
+  hsum->Write();
+  // save integration parameters
+  TVectorD vInt(2);
+  vInt[0]=xlow;
+  vInt[1]=xwid;
+  vInt.Write("vInt");
+  
   f->Close();
 
-  std::cout << "Hit any ^c to exit" << std::endl;
+  cout << "Hit any ^c to exit" << endl;
   theApp.Run(true);
   
   return 0;
