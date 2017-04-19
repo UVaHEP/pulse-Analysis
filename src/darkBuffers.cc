@@ -2,125 +2,45 @@
 #include "ps5000a.h"
 #include "TFile.h"
 #include "TGraph.h" 
-#include "TH1F.h"
 #include "TH2F.h"
 #include "TString.h"
 #include "TCanvas.h"
 #include "TStyle.h"
 #include "TString.h"
-#include "TKey.h"
 #include "TMath.h"
 #include "utils.h"
-#include "eventHandler.h"
+#include "picoutils.h"
+#include "TVector.h"
 #include <TApplication.h>
 #include <getopt.h>
 #include <stdio.h>
 
-
 using namespace picoscope;
 
-
-// fit a double exponential to separate DCR and afterpulsing in Delta_time distribution
-void fit2Exp(TH1F *h, TString opt="L"){
-  // 1st fit for DCR using long delta time tail
-  int startBin = 8;  // HACK!!! Start this fit after AP peak
-  h->Fit("expo",opt,"",h->GetBinCenter(startBin),h->GetXaxis()->GetXmax());
-  TF1 *fun1=new TF1(*(h->GetFunction("expo")));
-  fun1->SetName("expoDCR");
-  double a1,b1;  //fit parameters for DCR
-  a1=fun1->GetParameter(0);
-  b1=fun1->GetParameter(1); 
-  
-  // fit parameters for afterpulse component
-  // we start the combined fit at the maximum bin, a minimum bin value is set to
-  // prevent crazy fits at low statistics (~flat timing distribution)
-  double xAtMax=h->GetBinCenter( TMath::Min(3,h->GetMaximumBin()) );
-  double startx=h->GetBinCenter(xAtMax);
-  double apNorm=h->GetMaximum()-fun1->Eval(xAtMax);
-  double a2,b2; // fit parameters for APulse
-  a2=TMath::Log(apNorm);
-  b2=20*b1;  // HACK!!! Assume much faster fall off of AP spectrum
-  
-  TF1 *afterPulseFit = new TF1("afterPulseFit","exp([0]+[1]*x)+exp([2]+[3]*(x-[4]))",xAtMax, h->GetXaxis()->GetXmax());
-  afterPulseFit->SetParNames("A_{1}","Lamba_{DCR}","A_{2}","Lamba_{2}");
-  afterPulseFit->SetParameters(a1,b1,a2,b2,xAtMax);
-  afterPulseFit->FixParameter(4,xAtMax);
-  h->Fit("afterPulseFit",opt,"",xAtMax,h->GetXaxis()->GetXmax());
-
-  // update DCR fit function parameters and range for drawing
-  fun1->SetParameters( afterPulseFit->GetParameter(0), afterPulseFit->GetParameter(1) );
-  fun1->SetParError(0, afterPulseFit->GetParError(0));
-  fun1->SetParError(1, afterPulseFit->GetParError(1));
-  fun1->SetRange(xAtMax,h->GetXaxis()->GetXmax());
-  fun1->SetLineStyle(2);
-  fun1->Draw("same");
-  
-  h->GetListOfFunctions()->Add(fun1);
-  h->GetListOfFunctions()->Add(afterPulseFit);
-}
-
-void setupScope(ps5000a &dev,   chRange &range, int samples) { 
-  dev.setChCoupling(picoscope::A, picoscope::DC);
-  dev.setChRange(picoscope::A, range);
-  dev.enableChannel(picoscope::A);
-  dev.enableBandwidthLimit(picoscope::A); 
-  dev.setTimebase(1);
-  //dev.setSimpleTrigger(EXT, 18000, trgRising, 0, 0); 
-  dev.setSamples(samples); 
-  dev.setPreTriggerSamples(samples/2);
-  dev.setPostTriggerSamples(samples/2);
-}
-
-// fix me to work for a specified number of buffers and remove some code below
-void acquireBuffers(ps5000a &dev, vector <vector<short> > &data){
-  dev.prepareBuffers();
-  dev.captureBlock(); 
-  data = dev.getWaveforms();
-}
-
-
-Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
-  dev.setCaptureCount(1);
-  dev.prepareBuffers();
-  dev.captureBlock();
-  TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
-  eventHandler eH(*tc); 
-  TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,27000);
-  TH1F *hist = NULL;
-  TH1F *hpeakthresh = new TH1F("hpeakthresh","Signal Peak Threshold",50,0,27000);
-
-  float timebase = dev.timebaseNS();
-  std::cout << "Timebase: " << timebase << std::endl; 
-  vector <vector<short> > data = dev.getWaveforms();
-
-  vector<float> graphWaveform(data[0].size());
-  vector<float> graphtime(graphWaveform.size());
-  float timebaseStart = timebase*samples/2*-1;
-
-  auto waveform = data[0]; 
-  
-  for (int i = 0; i < waveform.size(); i++) {
-    graphtime[i] = timebaseStart+i*timebase;
+class peakData {
+public:
+  peakData(int b, int i, double x, double h) :
+    buffer(b),index(i),xpeak(x),height(h){;}
+  int buffer;
+  int index;
+  double xpeak;
+  double height;
+  void Print() {
+    std::cout << "(ibuf, idx, x, ycor) " << buffer << " " << index
+	      << " " << xpeak << " " << height << std::endl;
   }
-  
-  hist = new TH1F("pulses", "pulses;x[2 ns]", waveform.size(), 0, waveform.size());
-  for (int i = 0; i < waveform.size(); i++) {
-    hist->SetBinContent(i, -1*waveform[i]);
-  }
-  int iymax=(int)hist->GetMaximum();
-  iymax=iymax*1.1;
-  iymax-=iymax%1000;
-  hpeaks->SetBins(200,0,iymax);
-  hist->Draw();
-  tc->Update(); 
-  std::cout << "Please select the single peak threshold" << std::endl;
+};
 
-  tc->Connect("ProcessedEvent(Int_t,Int_t, Int_t, TObject *)", "eventHandler", &eH, "eventSlot(Int_t, Int_t, Int_t, TObject *)"); 
-  tc->Connect("Closed()", "TApplication", &app, "Terminate()"); 
-  app.SetReturnFromRun(true); 
-  app.Run(true); 
-
-  return eH.threshold(); 
+void usage(char **argv){
+  fprintf(stderr, "\nUsage: %s [options]\n",argv[0]);
+  fprintf(stderr, " -s nsamples[40000] : number of samples per buffer\n");
+  fprintf(stderr, " -b nbuffers[50] : number of buffers\n");
+  fprintf(stderr, " -a write out all buffers. 10 are written as default\n");
+  fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
+  fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
+  fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_20MV,PS_50MV,PS_100MV]\n");
+  fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
+  fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
 }
 
 int main(int argc, char **argv) {
@@ -158,6 +78,10 @@ int main(int argc, char **argv) {
       peThreshold=atof(optarg);
       std::cout<<"1PE value " << peThreshold<<std::endl;
     case 'R':
+      if (TString(optarg)=="PS_100MV") {
+	range = PS_100MV;
+	std::cout<<"setting range to PS_100MV"<<std::endl;
+      }
       if (TString(optarg)=="PS_50MV") {
 	range = PS_50MV;
 	std::cout<<"setting range to PS_50MV"<<std::endl;
@@ -181,31 +105,23 @@ int main(int argc, char **argv) {
       break;
     case 'h':
     default: /* '?' */
-      fprintf(stderr, "\nUsage: %s [options]\n",argv[0]);
-      fprintf(stderr, " -s nsamples[40000] : number of samples per buffer\n");
-      fprintf(stderr, " -b nbuffers[50] : number of buffers\n");
-      fprintf(stderr, " -a write out all buffers. 10 are written as default\n");
-      fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
-      fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
-      fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_20MV,PS_50MV]\n");
-      fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
-      fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
+      usage(argv);
       exit(EXIT_FAILURE);
     }
   }
 
   TApplication theApp("App", &argc, argv);
 
+  // acquire or read data
   ps5000a dev;
   vector <vector<short> > data;
   float timebase;
   
+  if (nbufUser>0) nbuffers=nbufUser;
   if (fileToOpen.Length()==0){
-    if (nbufUser>0) nbuffers=nbufUser;
     dev.open(picoscope::PS_12BIT);
     setupScope(dev, range, samples); 
     timebase = dev.timebaseNS();
-    std::cout << "Timebase: " << timebase << std::endl;
     
     // run GUI to pick 1PE threshold
     if (userThreshold) {
@@ -218,70 +134,52 @@ int main(int argc, char **argv) {
     dev.close();
   }
   else { // read buffers from file
-    nbuffers = 0;
-    TFile infile(fileToOpen);
-    TIter nextkey(gDirectory->GetListOfKeys());
-    TKey *key;
-    vector<short> buf;
-    while ( (key = (TKey*)nextkey()) ) {
-      TObject *obj = key->ReadObj();
-      if ( TString(obj->GetName())=="pulses" ){
-	TH1F *hbuf=(TH1F*)obj;
-	buf.clear();
-	nbuffers+=1;
-	for (int i=1; i<=hbuf->GetNbinsX();i++)
-	  buf.push_back((short)(-1.0*hbuf->GetBinContent(i)));
-	data.push_back(buf);
-	samples = hbuf->GetNbinsX();
-      }
-      if (nbufUser>0 && nbuffers>=nbufUser) break;
-    }
+    nbuffers=readBuffers(fileToOpen,data,timebase,samples);
     if (nbuffers==0) {
       std::cout << "No buffers found in input file.  Exiting..." << std::endl;
       return 1;
     }
-    timebase = ((TH1F*)(infile.Get("dT")))->GetBinContent(1);
   }
   
+  std::cout << "Timebase: " << timebase << std::endl;  
 
+  // open output file and setup storage elements
   TFile f(outfn, "RECREATE");
-  std::cout << "writing waveforms..." << std::endl;
   TH1F *hist = 0;
 
-  TH1F *dT  = new  TH1F("dT", "Time Steps [ns]", 1,0,1);
+  TH1F *dT  = new  TH1F("dT", "Time Steps [s]", 1,0,1);
   dT->Fill(0.0, timebase);
-  TH1F *dV = new TH1F("dV", "Voltage Steps[mV]", 1,0,1);
+  TH1F *dV = new TH1F("dV", "Voltage Steps [mV]", 1,0,1);
   dV->Fill(0.0, dev.adcToMv(1, range));
   std::cout << "dV:" << dev.adcToMv(1, range) << std::endl; 
   dT->Write();
   dV->Write();
 
-  delete dT;
-  delete dV;
-
-  // We use these histograms to write results to the TFile
   // delta time distribution
-  TH1F *hdTime=new TH1F("hdTime","Delta times;#Delta time [x2 ns]",101,-2.5,502.5);
+  TH1F *hdTime=new TH1F("hdTime","Delta times;#Delta time [s]",701,-2.e-9,2802e-9);
   // pulse height distribution
-  float maxPeakRange=35000; // HACK!!!!
-  TH1F* hpeaks=new TH1F("hpeaks","Peaks",200,0,maxPeakRange);  // y axis is reset below
-  TH1F* hintegrals=new TH1F("hintegrals","Area of isolated peaks",200,0,maxPeakRange); // also reset below
+  const float maxPeakRange=32768;  // roughly the max ADC value
+  TH1F* hpeaks=new TH1F("hpeaks","Peaks",256,0,maxPeakRange);  // y axis is reset below
+  TH1F* hintegrals=new TH1F("hintegrals","Area of isolated peaks",256,0,maxPeakRange*20); // also reset below
   TH1F* hFWHM=new TH1F("hFWHM","FWHM of peaks in bins",100,0,20);
   // 2D plot of pulse heights vs delta time
-  //TH2F *hdPT=new TH2F("hdPeakvTime","Peak vs Delta times;x [2 ns];ADC counts",
-  //			101,-2.5,502.5,400,0,maxPeakRange);
   TH2F *hdPT=new TH2F("hdPeakvTime","Peak vs Delta times;#Delta time [s];ADC counts",
-		      101,-2.5,502.5,400,0,maxPeakRange); //x-axis is reset below
-  //Threshold for counted peaks, maximum needs to be dynamic - y axis is reset below
-  TH1F *hpeakScan=new TH1F("hpeakScan","Threshold Scan;Threshold [ADC]",500,0,maxPeakRange);
-  // Diagnostic histogram to keep track of TSpectrum search thresholds
-  TH1F *hsearchThresh;
-  
+		      101,-2.5,502.5,512,0,maxPeakRange); //x-axis is reset below
+  double xmin=6e-9;
+  double xmax=5e-6;
+  int bins=(int)(TMath::Log10(xmax/xmin)*10);
+  hdPT->SetBins(bins,TMath::Log10(xmin),TMath::Log10(xmax),400,0,maxPeakRange);
+  BinLogX(hdPT);
+  // Threshold for counted peaks
+  TH1F *hpeakScan=new TH1F("hpeakScan","Threshold Scan;Threshold [ADC]",256,0,maxPeakRange);
+  // Diagnostic histogram to keep track of TSpectrum search threshold based on noise
+  TH1F *hsearchThresh=new TH1F("hsearchThresh","1PE search threshold;Threshold (ADC)",64,0,maxPeakRange/16);
+
+  gStyle->SetOptStat(0);
   TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
   TCanvas *tc1=new TCanvas("tc1","Peaks and Time distributions",0,450,1200,400);
   TCanvas *tcPT=new TCanvas("tcPT","Peaks v. time",0,600,600,400);
   tc1->Divide(3,1);
-  gStyle->SetOptStat(0);
   int totalPeaks=0;
   
   DarkPeaker *dPk = new DarkPeaker(peThreshold/2);
@@ -289,66 +187,54 @@ int main(int argc, char **argv) {
   bool first=true;
   int nbuf=0;
   TString buftitle;
+  vector<peakData> *vPeaks = new vector<peakData>; // keep track of all peak info
+  FitDcrAp *dcrFitter = new FitDcrAp();
   
-  for (auto &waveform : data) {
+  // loop through buffers 
+  for (auto &waveform : data) {   
     nbuf++;
-    std::cout << "Processing buffer: " << nbuf << std::endl;
+    if (nbufUser>0 && nbuf>=nbufUser) break; 
     buftitle.Form("Buffer[%d]",nbuf);
-
-    //std::cout << "Bins in hist: " << waveform.size() << std::endl;
     hist = new TH1F("pulses", buftitle, waveform.size(), 0, waveform.size());
-    for (int i = 0; i < waveform.size(); i++) {
+    for (int i = 0; i < waveform.size(); i++) { // translate buffer to histogram
       hist->SetBinContent(i, -1*waveform[i]);
     }
     
     dPk->SetBuffer(hist,timebase);
     dPk->AnalyzePeaks();
-    if (nbuf<=nbuffersWrite) dPk->GetBackground()->Write();
     
     int npeaks=dPk->GetNPeaks();
     totalPeaks+=npeaks;
     
     if (first) {
-      int iymax=(int)hist->GetMaximum();
-      iymax=iymax*1.6;
-      iymax-=iymax%1000;
-      hpeaks->SetBins(200,0,iymax);
-      hintegrals->SetBins(200,0,iymax*(iLimitL+iLimitH)/2);
-      double xmin=6e-9;
-      double xmax=5e-6;
-      int bins=(int)(TMath::Log10(xmax/xmin)*10);
-      hdPT->SetBins(bins,TMath::Log10(xmin),TMath::Log10(xmax),400,0,iymax);
-      BinLogX(hdPT);
-      hpeakScan->SetBins(500,0,iymax);
       dPk->GetHdist()->Write();  
       dPk->GetHscan()->Write();  // save a copy of data used for noise estimation in 1st buffer
-      hsearchThresh=new TH1F("hsearchThresh","1PE search threshold;Threshold (ADC)",50,0,iymax);
       first=false;
     }
     hsearchThresh->Fill(dPk->GetSearchThreshold());
 
-     
     // retrieve time ordered peak data and fill histograms
     double x,y,prev;
     TH1F *bkg=dPk->GetBackground();
     for (int i=0;i<npeaks;i++){
       dPk->GetPoint(i,x,y);
       double ycor = y - bkg->Interpolate(x);  // correct bin count for baseline shift
+      vPeaks->push_back(peakData(nbuf,i,x,ycor));
       hpeaks->Fill(ycor);
       for (int b = 1; b<=hpeakScan->GetNbinsX();b++){
 	if (ycor>hpeakScan->GetBinLowEdge(b))
 	  hpeakScan->SetBinContent(b,hpeakScan->GetBinContent(b)+1);	
       }
       if (i>0) {
-	hdTime->Fill(x-prev);
+	hdTime->Fill((x-prev)*timebase);
 	//hdPT->Fill(x-prev,y);  // if using linear x-binning
 	hdPT->Fill((x-prev)*timebase,y); // for log x-binning 
       }
       prev = x;
     }
-    //dPk->DumpPeaks();
 
-    // now fill the histogram of integrate peaks
+    // now fill the histogram of integrated peaks
+    // to do: add code to automatically calculate the optimal integration window
     dPk->Integrate(iLimitL,iLimitH);
     for (int i=0; i<dPk->GetNIntegrals(); i++){
       dPk->GetIntegral(i,x,y);
@@ -365,139 +251,194 @@ int main(int argc, char **argv) {
     // draw pulse analysis plots
     tc1->cd(1);
     hpeaks->DrawCopy();
+
     // peak threshold scan histogram
     tc1->cd(2);
     hpeakScan->DrawCopy();
+
     // delta_t histogram and fits for DCR
     tc1->cd(3);
-    fit2Exp(hdTime,"LQ");  
+    //fit2Exp(hdTime,"LQ");
+    dcrFitter->Fit(hdTime,"LQ");
     hdTime->DrawCopy();
+    dcrFitter->GetApFit()->DrawCopy("same");
+    dcrFitter->GetDcrFcn()->DrawCopy("same");
     tc1->Update();
 
+    // 2D plot of peaks vs delta time
     tcPT->cd()->SetLogx();
+    int bx,by,bz;
+    int bmax= hdPT->GetMaximumBin();
+    hdPT->GetBinXYZ(bmax,bx,by,bz);
+    int maxYbin=3.2*by;
+    //    float maxYbin=hdPT->ProjectionY()->FindLastBinAbove(0);
+    hdPT->GetYaxis()->SetRange(1,maxYbin);
     hdPT->DrawCopy("col");
     tcPT->Update();
         
     if (nbuf<=nbuffersWrite) hist->Write(); 
+    if (nbuffersWrite>0 && nbuf==1) dPk->GetBackground()->Write();
+
     delete hist;
-  }   // end of loop over buffers
-  
+  }
+  ///////////////////////////////////////////////////////////////////////////
+  // end of loop over buffers
+  ///////////////////////////////////////////////////////////////////////////
+  hdPT->Write();
   hdTime->Write();
-  hpeaks->Write();
   hintegrals->Write();
   hpeakScan->Write();
-  hdPT->Write();
   hsearchThresh->Write();
   hFWHM->Write();
-  tc1->cd(3);
-  fit2Exp(hdTime,"L");
-  hdTime->DrawCopy();
-  tc1->Update();
 
   //Total time for all buffers
   double timeTotal = nbuffers*samples*timebase;
-  std::cout <<"Number of buffers: "<<nbuffers<<std::endl;
-  
-  // Histograms to save derived information
-  TH1F *hRate=new TH1F("hRate","Dark Pulse Rate;;MHz",2,-1,2); // bin1 DCR fit, bin2 DCR count
-  TH1F *hCount=new TH1F("hCount","Dark Pulse Count;;",1,-1,1);
   TH1F *hTtot=new TH1F("hTtot","Total time of samples;;",1,-1,1);
-  TH1F *hAp=new TH1F("hAp","After Pulse Rate",1,-1,1);
-
-  // simple DCR rate
-  hCount->SetBinContent(1,totalPeaks);
   hTtot->SetBinContent(1,timeTotal);
-  double dcrSimple=totalPeaks/timeTotal/1000000; // in MHz, not corrected for AP
-  hRate->SetBinContent(2,dcrSimple);
-  hRate->SetBinError(2,TMath::Sqrt(totalPeaks)/timeTotal);
-
-  // DCR extracted from exponential fit
-  TF1 *tf_expoDCR=hdTime->GetFunction("expoDCR");
-  double par[2];
-  tf_expoDCR->GetParameters(par);
-  double meanDt = -2/par[1];  // Delta_t in [ns]
-  double dcrFit = 1 / meanDt * 1000;  // in MHz
-  double dcrErr = dcrFit*tf_expoDCR->GetParError(1)/par[1];
-  hRate->SetBinContent(1,dcrFit);
-  hRate->SetBinError(1,dcrErr);
-  
-  std::cout << "Average dark pulse rate (uncorrected): " << dcrSimple << std::endl;
-
-  double aPrate=0;
-  if (dcrFit<0 || TMath::Abs(dcrErr/dcrFit)>0.25){
-    std::cout << "Warning Fit yields negative DCR or large error" << std::endl;
-    std::cout << "Afterpulse calculation skipped" << std::endl;
-  }
-  // 
-  else {  // calculate afterpulse rate
-    //Written in part by Grace E. Cummings, 30 July 2016
-    TF1 *tf_apFcn = hdTime->GetFunction("afterPulseFit");
-    double xmaxBinTime = hdTime->GetBinCenter( hdTime->GetMaximumBin() );
-    double xmaxTime = hdTime->GetXaxis()->GetXmax();
-
-    //ap Rate calculated as ratio of fit of afterpulses to fit of dark counts
-    //Fit of afterpulses is the afterPulseFit-expoDCR
-    double aPFint = tf_apFcn->Integral(xmaxBinTime,xmaxTime);
-    double expDCRint = tf_expoDCR->Integral(xmaxBinTime,xmaxTime);
-    double binWidthhdTime = hdTime->GetBinWidth(1);
-    
-    aPrate = (aPFint-expDCRint)/expDCRint;
-    
-    hAp->SetBinContent(1,aPrate);
-    //Error in afterpulse rate. Sqrt(excess)~sigma of excess
-    double excess = (aPFint-expDCRint)/binWidthhdTime;
-    hAp->SetBinError(1,sqrt(excess)/(expDCRint/binWidthhdTime));    
-  }
-    
-  hRate->Write();
-  hCount->Write();
   hTtot->Write();
-  hAp->Write();
-    
-		     
-  //Find the crosstalk fraction using the peak height distribution  
-  int maxBin = hpeaks->GetMaximumBin();
-  double amplitude = hpeaks->GetBinContent(maxBin);
-  // estimate sigma and fit limit, extend until falling edge reaches ~15% of max bin
-  hpeaks->Fit("gaus","0Q");  // do a quick fit estimate the range
-  TF1 *tmpfn = hpeaks->GetFunction("gaus");
-  double sigma = tmpfn->GetParameter(2);
-  double fitLimit = tmpfn->GetParameter(1) + sigma*1.96;
-  
-  
-  // Do Gaussian Fit and plots
-  TF1 *peaksFit = new TF1("peaksFit","[0]*exp(-0.5*((x-[1])/[2])**2)",
-			  hpeaks->GetXaxis()->GetXmin(),hpeaks->GetXaxis()->GetXmax());
-  peaksFit->SetParameters(amplitude,hpeaks->GetBinCenter(maxBin),sigma);
-  TCanvas *tc2 =new TCanvas("tc2","Samples",50,20,400,400);
-  tc2->cd();
-  hpeaks->Fit("peaksFit","","",0,fitLimit);
-  hpeaks->DrawCopy();
-  double meanhPeaks = peaksFit->GetParameter(1);
-  double meanhPeakmV = dev.adcToMv(meanhPeaks,range);
-  double uncMeanhPeaks = peaksFit->GetParError(1);
-  double sigmahPeaks = peaksFit->GetParameter(2);
-  double uncSigmahPeaks = peaksFit->GetParError(2);
-  double sigmaOmeanhPeaks = sigmahPeaks/meanhPeaks;
 
-  // Calculate Crosstalk fraction as ratio of peaks > 1.5 PE/Total
-  double crosstalkFraction = 0;
-  double crosstalkPeaks = 0;
-  for (int i = 1; i<=hpeaks->GetNbinsX();i++){
-    if (hpeaks->GetBinCenter(i)>=meanhPeaks*1.5){
-    crosstalkPeaks+=hpeaks->GetBinContent(i);
+  std::cout <<"Number of buffers: "<< nbuf << " total time: " << timeTotal << std::endl;
+  std::cout <<"Number of peaks: " << totalPeaks << std::endl;
+  
+  TCanvas *tc2=new TCanvas("tc2","Peaks and Time distributions (0.1PE cut)",0,450,800,400);
+  tc2->Divide(2,1);
+
+
+  // Fit the 1PE peak, then refine it
+  hpeaks->Fit("gaus","0Q");
+  TF1 *peFcn=hpeaks->GetFunction("gaus");
+  double mu=peFcn->GetParameter(1);
+  double sig=peFcn->GetParameter(2);
+  std::cout << "** Fit to peak height distribution" << std::endl;
+  hpeaks->Fit("gaus","0","",mu-2*sig,mu+2*sig);
+  peFcn=hpeaks->GetFunction("gaus");
+  double onePE=peFcn->GetParameter(1);  // 1PE peak in ADC, bkg corrected
+  tc1->cd(1);
+  hpeaks->DrawCopy();
+  peFcn->DrawCopy("same");
+  hpeaks->Write();
+
+  totalPeaks=0;
+  // loop through peaks and remove everything < 0.1(5)PE cleans up grass
+  vector<peakData> *vPeaks01 = new vector<peakData>;
+  vector<peakData> *vPeaks05 = new vector<peakData>;
+  
+  for (auto &pkData : *vPeaks){
+    if (pkData.height<onePE/10) continue;
+    vPeaks01->push_back(pkData);
+    if (pkData.height<onePE/2) continue;
+    vPeaks05->push_back(pkData);
+  }
+
+  std::cout <<"Number of peaks >0.5PE " << vPeaks05->size() << std::endl;
+  std::cout <<"Number of peaks >0.1PE " << vPeaks01->size() << std::endl;
+  
+  ///////////////////////////////////////////////////////////////////////////
+  // now clean up the calculations/plots to using 1PE/2 threshold
+  ///////////////////////////////////////////////////////////////////////////
+  TH1F *hdTime01=new TH1F(*hdTime);
+  hdTime01->Reset();
+  hdTime01->SetName("hdTimeCut");
+  hdTime01->SetTitle("Delta times (0.1PE cut)");
+  TH1F *hdTime05=new TH1F(*hdTime);
+  hdTime05->Reset();
+  hdTime05->SetName("hdTimeCut");
+  hdTime05->SetTitle("Delta times (0.5PE cut)");
+
+  TH2F *hdPT01=new TH2F(*hdPT);
+  hdPT01->Reset();
+  hdPT01->SetName("hdPeakvTimeCut");
+  hdPT01->SetTitle("Peaks vs Delta times (0.1PE cut)");
+  hdPT01->SetMaximum(hdPT->GetMaximum());  // fix the color maps to same values
+
+  // loop over 0.1 PE peaks
+  for (int i=0; i<vPeaks01->size(); i++){
+    peakData &pk=(*vPeaks01)[i];
+    if (i==0) continue;
+    peakData &last=(*vPeaks01)[i-1];
+    double dT=0;
+    if (last.buffer==pk.buffer) {
+      hdTime01->Fill((pk.xpeak-last.xpeak)*timebase);
+      hdPT01->Fill((pk.xpeak-last.xpeak)*timebase,pk.height);
     }
   }
-  crosstalkFraction = crosstalkPeaks/totalPeaks;
   
-  //Save the Crosstalk Fraction (lightspin way)
-  TH1F *hCrossTalk = new TH1F("hCrossTalk","Crosstalk Fraction",1,-1,1);
-  hCrossTalk->SetBinContent(1,crosstalkFraction);
-  //Error in Crosstalk Fraction. Sqrt(multi-photon peaks)~sigma of the crosstalk/totalPeaks
-  hCrossTalk->SetBinError(1,sqrt(crosstalkPeaks)/totalPeaks);
-  hCrossTalk->Write();
+  // loop over 0.5 PE peaks
+  int num1_5=0;  // for cross talk
+  for (int i=0; i<vPeaks05->size(); i++){
+    peakData &pk=(*vPeaks05)[i];
+    if ( pk.height>=onePE*1.5 ) num1_5++;
+    if (i==0) continue;
+    peakData &last=(*vPeaks05)[i-1];
+    double dT=0;
+    if (last.buffer==pk.buffer) {
+      hdTime05->Fill((pk.xpeak-last.xpeak)*timebase);
+    }
+  }
 
   
+  TCanvas *tcPT2=new TCanvas("tcPT2","Peaks v. time (0.1PE cut)",600,600,600,400);
+  tcPT2->cd()->SetLogx();
+  hdPT01->DrawCopy("col");
+
+  
+  // redo the fit for DCR
+  tc2->cd(1);
+  std::cout << "** Extraction of DCR and Afterpulsing 0.1 PE cut" << std::endl;
+  dcrFitter->Fit(hdTime01,"L");
+  hdTime01->DrawCopy();
+  dcrFitter->GetApFit()->DrawCopy("same");
+  dcrFitter->GetDcrFcn()->DrawCopy("same");
+  tc2->Update();
+  hdTime01->Write();
+  TH1F *hRate=new TH1F("hRate","Dark Pulse Rate;;MHz",2,-1,2); // bin1 DCR fit, bin2 DCR count
+  // DCR rate from counting
+  double dcrCount=1.0*totalPeaks/timeTotal; // in Hz
+  hRate->SetBinContent(2,dcrCount);
+  hRate->SetBinError(2,TMath::Sqrt(totalPeaks)/timeTotal);
+  // DCR extracted from exponential fit
+  double dcrFit=dcrFitter->GetDCR(timebase);
+  double dcrErr=0;
+  double rateAP=0;
+  double errAP=0;
+  hRate->SetBinContent(1,dcrFit);
+  hRate->SetBinError(1,dcrErr);
+  hRate->Write();
+  TH1F *hAp=new TH1F("hAp","After Pulse Rate",1,-1,1);
+  hAp->SetBinContent(1,rateAP);
+  hAp->SetBinError(1,errAP);
+  hAp->Write();
+
+  tc2->cd(2);
+  std::cout << "** Extraction of DCR and Afterpulsing 0.5PE cut" << std::endl;
+  dcrFitter->Fit(hdTime05,"L");
+  hdTime05->DrawCopy();
+  dcrFitter->GetApFit()->DrawCopy("same");
+  dcrFitter->GetDcrFcn()->DrawCopy("same");
+  
+
+    
+  // cross talk  
+  double xTalkFrac = 1.0*num1_5/vPeaks05->size();
+  TH1F *hCrossTalk = new TH1F("hCrossTalk","Crosstalk Fraction",1,-1,1);
+  hCrossTalk->SetBinContent(1,xTalkFrac);
+  //Error in Crosstalk Fraction. Sqrt(multi-photon peaks)~sigma of the crosstalk/totalPeaks
+  hCrossTalk->SetBinError(1,sqrt(num1_5)/vPeaks05->size());
+  hCrossTalk->Write();
+      
+  // Save various derived information
+  TH1F *hCount=new TH1F("hCount","Dark Pulse Count 0.5PE;;",1,-1,1);
+  hCount->SetBinContent(1,vPeaks05->size());
+  hCount->Write();
+  
+  double meanhPeaks = peFcn->GetParameter(1);
+  double meanhPeakmV = dev.adcToMv(meanhPeaks,range);
+  double uncMeanhPeaks = peFcn->GetParError(1);
+  double sigmahPeaks = peFcn->GetParameter(2);
+  double uncSigmahPeaks = peFcn->GetParError(2);
+  double sigmaOmeanhPeaks = sigmahPeaks/meanhPeaks;
+
+   
   //Save mean of 1PE peak
   TH1F *h1PePeak = new TH1F("h1PePeak","1 PE Peak Mean Value",1,-1,1);
   h1PePeak->SetBinContent(1,meanhPeaks);
@@ -507,26 +448,31 @@ int main(int argc, char **argv) {
   h1PePeakmV->SetBinContent(1,meanhPeakmV);
   h1PePeakmV->Write();
   
-  //Save sigma of 1Pe peak
+  //Save sigma of 1PE peak
   TH1F *h1PePeakSigma = new TH1F("h1PePeakSigma","1 PE Peak Sigma Value",1,-1,1);
   h1PePeakSigma->SetBinContent(1,sigmahPeaks);
   h1PePeakSigma->SetBinError(1,uncSigmahPeaks);
   h1PePeakSigma->Write();
 
-  //Save sigma/1Pe peak
+  //Save sigma/1PE peak
   TH1F *hSigmaOMean = new TH1F("hSigmaOMean","Sigma/Mean",1,-1,1);
   hSigmaOMean->SetBinContent(1,sigmaOmeanhPeaks);
   hSigmaOMean->Write();
   
-  f.Close();
  
   std::cout << "===============================" << std::endl;
-  std::cout << "Dark pulse rate (uncorrected): " << dcrSimple << " MHz" << std::endl;
-  std::cout << "Dark pulse fit: " << dcrFit << " MHz" << std::endl;
-  std::cout << "Afterpulse probability:  " << aPrate << std::endl;
-  std::cout << "Crosstalk Fraction (1.5 PE threshold): " << crosstalkFraction << std::endl;
+  std::cout << "Dark pulse rate (counting): " << dcrCount << " MHz" << std::endl;
+  std::cout << "Dark pulse rate (fit): " << dcrFit << " MHz" << std::endl;
+  std::cout << "Afterpulse probability (fit):  " << rateAP << std::endl;
+  std::cout << "Afterpulse probability (2D):  " << apCalc2D(hdPT,1e-6/dcrFit,mu,sig) << std::endl;
+  std::cout << "Crosstalk Fraction (1.5 PE threshold): " << xTalkFrac << std::endl;
   std::cout << "1Pe Peak value: " << meanhPeaks << " (ADC)  " << meanhPeakmV << " (mV)" << std::endl;
+  std::cout << "mV calc is garbage ==> fix me!!!" << std::endl;
   std::cout << "===============================" << std::endl;
+
+  f.Close();
+
+
   
   std::cout<< "Close TCanvas: Peaks and Time distributions to exit" << std::endl;
   tc1->Connect("TCanvas","Closed()","TApplication",gApplication,"Terminate()");

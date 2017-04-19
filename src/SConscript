@@ -33,7 +33,7 @@ eHShared = libenv.SharedLibrary('eventHandler.so', ['eventHandlerDict.cc', 'even
 
 env.Install('#/lib', eHShared)
 env.Alias('install','/opt/uvahep/bin')
-env.Program('darkBuffers', ['darkBuffers.cc', 'utils.cc'])
+env.Program('darkBuffers', ['darkBuffers.cc', 'utils.cc', 'picoutils.cc'])
 env.Program('pulseMeasurements', ['pulseMeasurements.cc'])
 
 ##Grace E. Cummings added to test new scripts

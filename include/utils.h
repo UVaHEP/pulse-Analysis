@@ -2,6 +2,7 @@
 #define DARKPEAKER_H
 
 #include "TH1F.h"
+#include "TH2F.h"
 #include "TF1.h"
 #include "TSpectrum.h"
 #include "TString.h"
@@ -75,5 +76,39 @@ private:
 // helper functions
 TString getoutput(TString cmd);
 void BinLogX(TH1*h);
+
+// fit a double exponential to separate DCR and afterpulsing in Delta_time distribution
+void fit2Exp(TH1F *h, TString opt="L,Q");
+
+// improved fit model
+void fcnDcrAp(TH1F *h, TString opt="L,Q");
+class FitDcrAp {
+ public:
+  FitDcrAp();
+  void Fit(TH1F *h, TString opt="L,Q");
+  TF1 *GetExpFit(){return expoFit;}
+  TF1 *GetApFit(){return afterPulseFit;}
+  TF1 *GetDcrFcn();
+  // DCR rate based on sample time in ns
+  double GetDCR(double tSampNS) {return 1/(tSampNS*afterPulseFit->GetParameter(3));}  // DCR in Hz
+  /*
+  double GetDCRerr();
+  double GetAPrate();
+  double GetAPerr();
+  */
+ private:
+  TF1 *expoFit;
+  TF1 *afterPulseFit;
+  TF1 *dcrFcn;
+};
+
+
+
+
+// calculate DCR based on double exponential fit
+void calcDcrAp(TH1F *hdTime, double &fitDCR, double &errDCR, double &rateAP, double errAP);
+
+
+double apCalc2D(TH2F *h, double dcr, double pe, double sigma);
 
 #endif
