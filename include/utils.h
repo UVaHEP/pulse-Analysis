@@ -90,10 +90,12 @@ class FitDcrAp {
   TF1 *GetApFit(){return afterPulseFit;}
   TF1 *GetDcrFcn();
   // DCR rate based on sample time in ns
-  double GetDCR(double tSampNS) {return 1/(tSampNS*afterPulseFit->GetParameter(3));}  // DCR in Hz
+  // HACK - Only works if x-axis is in units of ns
+  double GetDCR() {return 1e9/(afterPulseFit->GetParameter(3));}  // DCR in Hz
+  double GetAPrate() {return afterPulseFit->GetParameter(1);}
   /*
   double GetDCRerr();
-  double GetAPrate();
+
   double GetAPerr();
   */
  private:

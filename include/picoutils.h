@@ -11,7 +11,7 @@ using namespace picoscope;
 void setupScope(ps5000a &dev, chRange &range, int samples);
 void acquireBuffers(ps5000a &dev, vector <vector<short> > &data);
 Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app);
-int readBuffers(TString filename, vector <vector<short> > &data, float &timebase, int &samples);
+int readBuffers(TString filename, vector <vector<short> > &data, double &timebase, double &adc2mV);
 
 #endif
 

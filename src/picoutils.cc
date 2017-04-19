@@ -30,7 +30,7 @@ void acquireBuffers(ps5000a &dev, vector <vector<short> > &data){
 }
 
 // read buffers from a file instead of acquiring from a scope
-int readBuffers(TString filename, vector <vector<short> > &data, float &timebase, int &samples){
+int readBuffers(TString filename, vector <vector<short> > &data, double &timebase, double &adc2mV){
   int nbuffers = 0;
   TFile infile(filename);
   TIter nextkey(gDirectory->GetListOfKeys());
@@ -45,11 +45,10 @@ int readBuffers(TString filename, vector <vector<short> > &data, float &timebase
       for (int i=1; i<=hbuf->GetNbinsX();i++)
 	buf.push_back((short)(-1.0*hbuf->GetBinContent(i)));
       data.push_back(buf);
-      samples = hbuf->GetNbinsX();
     }
-    //if (nbufUser>0 && nbuffers>=nbufUser) break;
   }
   timebase=((TH1F*)(infile.Get("dT")))->GetBinContent(1);
+  adc2mV=((TH1F*)(infile.Get("dV")))->GetBinContent(1);
 }
 
 

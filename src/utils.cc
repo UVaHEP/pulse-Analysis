@@ -78,14 +78,14 @@ int DarkPeaker::AnalyzePeaks(){
   double threshold;
   if (_peThreshold>-1e19) threshold = _peThreshold / buf->GetMaximum();
   else threshold = (snglPeak/2) / buf->GetMaximum();
-  cout << "snglPeak/2 : " << snglPeak/2 << endl;
+  //cout << "snglPeak/2 : " << snglPeak/2 << endl;
   //
   double sigma=2; // this can/should be optimzed
   npeaks=tspectrum->Search(buf,sigma,"nobackground,nomarkov,nodraw",threshold);
   //npeaks=tspectrum->Search(buf,sigma,"nomarkov,nodraw",threshold);
   //int npeaks=tspectrum->Search(buf,sigma,"nomarkov",threshold);
-  cout << "Found " << npeaks << " peaks" << endl;
-  cout << "Approximate DCR: " << CalcDarkRate() << " MHz" << endl;
+  //cout << "Found " << npeaks << " peaks" << endl;
+  //cout << "Approximate DCR: " << CalcDarkRate() << " MHz" << endl;
 
   // retrieve the peaks and sort by time order
   Int_t *index=new Int_t[npeaks];
@@ -287,8 +287,8 @@ void DarkPeaker::FindNoise(){
   _peThreshold=4.5/threshSlope;  // BH tweak to 4.5 times
   
   //hscan option
-  std::cout <<
-    "1PE peak not found, estimate noise to be above "<< _peThreshold << std::endl;
+  //std::cout <<
+  //  "1PE peak not found, estimate noise to be above "<< _peThreshold << std::endl;
 }
 // dark count rate in MHz
 double DarkPeaker::CalcDarkRate(){
