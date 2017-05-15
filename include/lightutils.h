@@ -4,8 +4,11 @@
 #include "TString.h"
 #include "TCanvas.h"
 
-//#define TSPECTFLOAT Float_t  // ROOT 5
+#if __GNUC__ < 6
+#define TSPECTFLOAT Float_t  // ROOT 5
+#else
 #define TSPECTFLOAT Double_t // ROOT 6
+#endif
 
 class LightPeaker {
  public:
