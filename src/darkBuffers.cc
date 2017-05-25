@@ -65,6 +65,7 @@ int main(int argc, char **argv) {
       break;
     case 'b':
       nbufUser=atoi(optarg);
+      std::cout << "Using:" << nbufUser << " captures." << std::endl;
       break;
     case 'u':
       // Capture first waveform, then allow the user to select a threshold via GUI
@@ -95,6 +96,7 @@ int main(int argc, char **argv) {
       quit=true;  // not implemented
       break;
     case '0':   // turn off graphics
+      std::cout <<"Quiet Mode." << std::endl;
       quiet=true;    // not implemented
       break;
     case 'a':
@@ -110,7 +112,9 @@ int main(int argc, char **argv) {
     }
   }
 
-  TApplication theApp("App", &argc, argv);
+  //-1 disables ROOT arg processing in TApplication
+  //this is to avoid having ROOT run in batch mode
+  TApplication theApp("App", &argc, argv, NULL, -1); 
 
   // acquire or read data
   ps5000a dev;

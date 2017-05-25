@@ -93,8 +93,10 @@ int main(int argc, char **argv) {
       break;	
     case 'h':
     default: /* '?' */
-      fprintf(stderr, "Usage: %s",argv[0]);
-      fprintf(stderr, "-b nbuffers[10000] -c nrepeat[5] -w nsave[20] -o output[darkBuffers.root]\n");
+      fprintf(stderr, "Usage: %s ",argv[0]);
+      fprintf(stderr, "-b nbuffers[10000] -c nrepeat[5] -w nsave[20] -z0 starting bin for background integration[0]");
+      fprintf(stderr, "-o output[darkBuffers.root]\n");
+      fprintf(stderr, "-a automatically find integration window\n");
       fprintf(stderr, "-x starting bin of pulse integral[50]\n");
       fprintf(stderr, "-q exit when finished\n");	    
       exit(EXIT_FAILURE);
@@ -150,8 +152,8 @@ int main(int argc, char **argv) {
 	xlow=maxbin-(maxbin-left)*2;
 	if (xlow <= nBaseline) cout << "WARNING: pulse is too close to background area, move to the right" << endl;
       }
-      if (i==0)
-	cout << "Setting integration window ( " << xlow << " , " << xwid << " )" << endl;
+      //if (i==0)
+      //cout << "Setting integration window ( " << xlow << " , " << xwid << " )" << endl;
       
       //Note! Currently this is in ADC  counts, not anything else
       PHD(hsamp,hpulses1,xlow,xwid);  // integrals are inclusive over bins limits
@@ -167,7 +169,7 @@ int main(int argc, char **argv) {
 
   dev.close(); 
   TFile *f = new TFile(outfn, "RECREATE");
-  
+  std::cout << "Writing output to:" << outfn << std::endl;
   TCanvas *tc=new TCanvas("tc","Pulse heights",1200,400);
   tc->Divide(3,1);
   gStyle->SetOptStat(0);
