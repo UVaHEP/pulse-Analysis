@@ -39,8 +39,11 @@ void usage(char **argv){
   fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
   fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
   fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_20MV,PS_50MV,PS_100MV]\n");
+  fprintf(stderr, "                     !! currently over written by auto ranging feature\n");
   fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
   fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
+  fprintf(stderr, " -q quiet option: only show final plots\n");
+  fprintf(stderr, " -Q quiet option: no plots\n");
 }
 
 int main(int argc, char **argv) {
@@ -126,6 +129,9 @@ int main(int argc, char **argv) {
     dev.open(picoscope::PS_12BIT);
     setupScope(dev, range, samples); 
     timebase = dev.timebaseNS();  // despite the name this returns units of seconds
+
+    // auto range, set number of buffers to acquire AFTER auto range
+    autoRange(dev);
     
     // run GUI to pick 1PE threshold
     if (userThreshold) {

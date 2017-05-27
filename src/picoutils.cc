@@ -9,7 +9,7 @@
 
 
 
-void setupScope(ps5000a &dev,   chRange &range, int samples) { 
+void setupScope(ps5000a &dev, chRange &range, int samples) { 
   dev.setChCoupling(picoscope::A, picoscope::DC);
   dev.setChRange(picoscope::A, range);
   dev.enableChannel(picoscope::A);
@@ -21,6 +21,33 @@ void setupScope(ps5000a &dev,   chRange &range, int samples) {
   dev.setPostTriggerSamples(samples/2);
 }
 
+
+void autoRange(ps5000a &dev){
+  vector <vector<short> > data;
+  int mvRange[]={10,20,50,100,200,500,1000,2000,500};
+  dev.setChRange(picoscope::A, PS_10MV);
+  dev.setCaptureCount(1);
+  chRange autoRange=PS_10MV;
+  for ( int psRange=PS_10MV; psRange < PS_1V; psRange++ ){
+    std::cout<<"Autoranging pass: " << mvRange[psRange] << "mV range" << std::endl;
+    autoRange=(chRange)psRange;
+    dev.prepareBuffers();
+    dev.captureBlock(); 
+    data = dev.getWaveforms();
+    bool overThresh=false;
+    for (auto &waveform : data) {
+      for (int i = 0; i < waveform.size(); i++) {
+	if (abs(waveform[i])>26000){      // ~ 80% of ADC range
+	  overThresh=true;
+	  break;
+	}
+      }
+    } // end of buffer loop
+    if (!overThresh) return;
+    // set picoscope to next highest voltage
+    dev.setChRange(picoscope::A, autoRange);
+  }
+}
 
 // fix me to work for a specified number of buffers and remove some code below
 void acquireBuffers(ps5000a &dev, vector <vector<short> > &data){

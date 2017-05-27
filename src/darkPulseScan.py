@@ -67,6 +67,7 @@ elif stepsize>0 and vmax>0:
 #loop over voltages
 vend=vmax
 
+tf=TFile(outname+".root","recreate")
 tg=TGraphErrors()
 tg.SetTitle("Dark pulse rate vs Voltage;V;MHz")
 tga=TGraphErrors()
@@ -81,6 +82,8 @@ tge=TGraphErrors()
 tge.SetTitle("Sigma/mean vs. Voltage;V")
 tc=TCanvas("cgr","Pulse Data",1500,1000)
 tc.Divide(3,2)
+tIV=TGraph()
+tIV.SetTitle("I vs V")
 
 #print "nsteps",nsteps
 nbuf=args.nbuf
@@ -89,11 +92,18 @@ for i in range(nsteps+1):
     v=round(voltage+i*stepsize,3)
     print bcolors.HEADER+"\nStarting data at V= "+str(v)+bcolors.ENDC
     # set voltage
-    subprocess.call(["setVoltage.py","-pqv"+str(v)])
+    #subprocess.call(["setVoltage.py","-pqv"+str(v)])
+    iReading=subprocess.check_output(["setVoltage.py","-pqv"+str(v)])
+    print iReading
+    iVal=iReading.split("measure:")[1]
+    iVal=float(iVal.split()[0])
+    print "Readback current",iVal
+    f_IV=open(outname+"_"+str(v)+".txt","w")
+    f_IV.write(str(iVal)+"\n")
     # takepulses
     filename=outname+"_"+str(v)+".root"
     print "Saving data to",filename
-    subprocess.call(["./darkBuffers","-qb"+str(nbuf), "-o"+filename,
+    subprocess.call(["./darkBuffers","-aqb"+str(nbuf), "-o"+filename,
                      "-R"+args.range])
     tf=TFile(filename)
     darkRate=tf.Get("hRate").GetBinContent(1);
@@ -115,6 +125,7 @@ for i in range(nsteps+1):
     sigmaOmean=tf.Get("hSigmaOMean").GetBinContent(1);
     tgd.SetPoint(tgd.GetN(),pePeak,sigmaOmean);
     tge.SetPoint(tge.GetN(),v,sigmaOmean);
+    tIV.SetPoint(tIV.GetN(),v,iVal);
     tc.cd(1);
     tg.Draw("ALP*")
     tc.cd(2)
@@ -131,7 +142,16 @@ for i in range(nsteps+1):
     
 subprocess.call(["setVoltage.py"])
 
-time.sleep(2)
+#time.sleep(2)
 tc.SaveAs(outname+".pdf")
-
+tf.cd()
+tg.Write()
+tga.Write()
+tgb.Write()
+tgc.Write()
+tgd.Write()
+tge.Write()
+tIV.Write()
+tf.Write()
+tf.Close()
 
