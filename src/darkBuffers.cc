@@ -8,6 +8,7 @@
 #include "TStyle.h"
 #include "TString.h"
 #include "TMath.h"
+#include "TROOT.h"
 #include "utils.h"
 #include "picoutils.h"
 #include "TVector.h"
@@ -42,8 +43,8 @@ void usage(char **argv){
   fprintf(stderr, "                     !! currently over written by auto ranging feature\n");
   fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
   fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
-  fprintf(stderr, " -q quiet option: only show final plots\n");
-  fprintf(stderr, " -Q quiet option: no plots\n");
+  fprintf(stderr, " -q : close displays and quit program automatically\n");
+  fprintf(stderr, " -0 : quiet option\n");
 }
 
 int main(int argc, char **argv) {
@@ -118,7 +119,8 @@ int main(int argc, char **argv) {
   //-1 disables ROOT arg processing in TApplication
   //this is to avoid having ROOT run in batch mode
   TApplication theApp("App", &argc, argv, NULL, -1); 
-
+  if (quiet) gROOT->SetBatch();
+  
   // acquire or read data
   ps5000a dev;
   vector <vector<short> > data;
@@ -130,7 +132,7 @@ int main(int argc, char **argv) {
     setupScope(dev, range, samples); 
     timebase = dev.timebaseNS();  // despite the name this returns units of seconds
 
-    // auto range, set number of buffers to acquire AFTER auto range
+    // auto range, set number of buffers to acquire AFTER autoRange
     autoRange(dev);
     
     // run GUI to pick 1PE threshold
@@ -192,12 +194,13 @@ int main(int argc, char **argv) {
   TH1F *hsearchThresh=new TH1F("hsearchThresh","1PE search threshold;Threshold (ADC)",64,0,maxPeakRange/16);
 
   gStyle->SetOptStat(0);
-  TCanvas *tc=new TCanvas("tc","Samples",50,20,1200,400);
-  TCanvas *tc1=new TCanvas("tc1","Peaks and Time distributions",0,450,1200,400);
-  TCanvas *tcPT=new TCanvas("tcPT","Peaks v. time",0,600,600,400);
+  TCanvas *tc,*tc1,*tcPT;
+  tc=new TCanvas("tc","Samples",50,20,1200,400);
+  tc1=new TCanvas("tc1","Peaks and Time distributions",0,450,1200,400);
+  tcPT=new TCanvas("tcPT","Peaks v. time",0,600,600,400);
   tc1->Divide(3,1);
-  int totPeaks=0;
   
+  int totPeaks=0;
   DarkPeaker *dPk = new DarkPeaker(peThreshold/2);
 
   bool first=true;
@@ -258,6 +261,7 @@ int main(int argc, char **argv) {
       hFWHM->Fill(dPk->GetFWHM(i));
     }
     
+
     // draw samples buffer with peaks and background
     tc->cd();
     hist->DrawCopy();
@@ -292,7 +296,7 @@ int main(int argc, char **argv) {
     hdPT->GetYaxis()->SetRange(1,maxYbin);
     hdPT->DrawCopy("col");
     tcPT->Update();
-        
+    
     if (nbuf<=nbuffersWrite) hist->Write(); 
     if (nbuffersWrite>0 && nbuf==1) dPk->GetBackground()->Write();
 

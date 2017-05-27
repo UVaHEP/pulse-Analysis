@@ -3,6 +3,11 @@
 import argparse,sys
 import subprocess,time
 
+# keep ROOT TApplication from grabbing -h flag
+from ROOT import PyConfig
+PyConfig.IgnoreCommandLineOptions = True
+from ROOT import *
+
 
 class bcolors:
     HEADER = '\033[95m' # purple
@@ -30,15 +35,18 @@ parser.add_argument('-x', '--vmax', type=float, default = 0,
                     help="max voltage")
 parser.add_argument('-R','--range', type=str, default="PS_20MV",
                     help="set voltage scale on picoscope [PS_20MV]")
-parser.add_argument('-0', '--zero', action='store_true',
+parser.add_argument('-z', '--zero', action='store_true',
                     help="zero voltage measure")
 parser.add_argument('-o', '--output', type=str, default = "darkBuffers",
                     help="outputfile template")
 parser.add_argument('-b', '--nbuf', type=int, default = 50,
                     help="number of buffers to take [5]")
+parser.add_argument('-f', '--usefile', dest="usefile", default=None, action="store_true",
+                    help="Use this flag if reading input from root files")
+parser.add_argument('-0', '--quiet', dest="quiet", default=None, action="store_true",
+                    help="Use this flag to disable graphics")
 args = parser.parse_args()
 
-from ROOT import *
 
 if args.voltage: voltage=args.voltage
 if not args.voltage and not args.zero:
@@ -67,23 +75,17 @@ elif stepsize>0 and vmax>0:
 #loop over voltages
 vend=vmax
 
-tf=TFile(outname+".root","recreate")
-tg=TGraphErrors()
-tg.SetTitle("Dark pulse rate vs Voltage;V;MHz")
-tga=TGraphErrors()
-tga.SetTitle("Afterpulse rate vs Voltage")
-tgb=TGraphErrors()
-tgb.SetTitle("Crosstalk fraction vs. Voltage;V")
-tgc=TGraphErrors()
-tgc.SetTitle("1PE Peak vs. Voltage;V")
-tgd=TGraphErrors()
-tgd.SetTitle("Sigma/Mean vs. Mean")
-tge=TGraphErrors()
-tge.SetTitle("Sigma/mean vs. Voltage;V")
+tfScan=TFile(outname+".root","recreate")
+tg=TGraphErrors(); tg.SetTitle("Dark count rate vs Voltage;V;MHz"); tg.SetName("gDCR")
+tg.SetMaximum(10)
+tga=TGraphErrors(); tga.SetTitle("Afterpulse rate vs Voltage"); tga.SetName("gAPRate")
+tgb=TGraphErrors(); tgb.SetTitle("Crosstalk fraction vs. Voltage;V"); tgb.SetName("gXtalkFrac")
+tgc=TGraphErrors(); tgc.SetTitle("1PE Peak vs. Voltage;V"); tgc.SetName("gOnePE")
+tgd=TGraphErrors(); tgd.SetTitle("Sigma/Mean vs. Mean"); tgd.SetName("gSoM1")
+tge=TGraphErrors(); tge.SetTitle("Sigma/mean vs. Voltage;V"); tge.SetName("gSom2")
+tIV=TGraph(); tIV.SetTitle("I vs V"); tIV.SetName("gIV")
 tc=TCanvas("cgr","Pulse Data",1500,1000)
 tc.Divide(3,2)
-tIV=TGraph()
-tIV.SetTitle("I vs V")
 
 #print "nsteps",nsteps
 nbuf=args.nbuf
@@ -91,24 +93,36 @@ nbuf=args.nbuf
 for i in range(nsteps+1):
     v=round(voltage+i*stepsize,3)
     print bcolors.HEADER+"\nStarting data at V= "+str(v)+bcolors.ENDC
-    # set voltage
+    ### set voltage
     #subprocess.call(["setVoltage.py","-pqv"+str(v)])
-    iReading=subprocess.check_output(["setVoltage.py","-pqv"+str(v)])
-    print iReading
-    iVal=iReading.split("measure:")[1]
-    iVal=float(iVal.split()[0])
+    
+    if args.usefile==None:
+        iReading=subprocess.check_output(["setVoltage.py","-pqv"+str(v)])
+        #print iReading
+        iVal=iReading.split("measure:")[1]
+        iVal=float(iVal.split()[0])
+    else:
+        f_IV=open(outname+"_"+str(v)+".txt")
+        iVal=float(f_IV.read())
     print "Readback current",iVal
     f_IV=open(outname+"_"+str(v)+".txt","w")
     f_IV.write(str(iVal)+"\n")
     # takepulses
     filename=outname+"_"+str(v)+".root"
-    print "Saving data to",filename
-    subprocess.call(["./darkBuffers","-aqb"+str(nbuf), "-o"+filename,
-                     "-R"+args.range])
+    flags=""
+    if args.quiet: flags="-0"
+    if args.usefile:
+        filename2=filename.replace(".root","_.root")
+        subprocess.call(["./darkBuffers",flags,"-qf"+filename, "-o"+filename2,
+                         "-R"+args.range])
+    else:
+        subprocess.call(["./darkBuffers",flags,"-aqb"+str(nbuf), "-o"+filename,
+                         "-R"+args.range])
+
     tf=TFile(filename)
     darkRate=tf.Get("hRate").GetBinContent(1);
     error=tf.Get("hRate").GetBinError(1);
-    tg.SetPoint(tg.GetN(),v,darkRate);
+    tg.SetPoint(tg.GetN(),v,darkRate/1e6);
     tg.SetPointError(tg.GetN()-1,0,error);
     afterRate=tf.Get("hAp").GetBinContent(1);
     error=tf.Get("hAp").GetBinError(1);
@@ -140,11 +154,11 @@ for i in range(nsteps+1):
     tge.Draw("ALP*")
     tc.Update()
     
-subprocess.call(["setVoltage.py"])
+if args.usefile==None: subprocess.call(["setVoltage.py"])
 
 #time.sleep(2)
 tc.SaveAs(outname+".pdf")
-tf.cd()
+tfScan.cd()
 tg.Write()
 tga.Write()
 tgb.Write()
@@ -152,6 +166,6 @@ tgc.Write()
 tgd.Write()
 tge.Write()
 tIV.Write()
-tf.Write()
-tf.Close()
+tfScan.Write()
+tfScan.Close()
 
