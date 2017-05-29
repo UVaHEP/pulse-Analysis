@@ -53,9 +53,9 @@ if not args.voltage and not args.zero:
     print "No voltage given:",args.voltage
     sys.exit()
 if args.zero: voltage=0
-if  args.voltage<=0:
-    print "Invalid voltage given:",args.voltage
-    sys.exit()
+#if  args.voltage<=0:
+#    print "Invalid voltage given:",args.voltage
+#    sys.exit()
 vmax=args.vmax
 outname=args.output
 
@@ -96,17 +96,11 @@ for i in range(nsteps+1):
     ### set voltage
     #subprocess.call(["setVoltage.py","-pqv"+str(v)])
     
-    if args.usefile==None:
-        iReading=subprocess.check_output(["setVoltage.py","-pqv"+str(v)])
-        #print iReading
-        iVal=iReading.split("measure:")[1]
-        iVal=float(iVal.split()[0])
-    else:
-        f_IV=open(outname+"_"+str(v)+".txt")
-        iVal=float(f_IV.read())
+    iReading=subprocess.check_output(["setVoltage.py","-pqv"+str(v)])
+    print iReading
+    iVal=iReading.split("measure:")[1]
+    iVal=float(iVal.split()[0])
     print "Readback current",iVal
-    f_IV=open(outname+"_"+str(v)+".txt","w")
-    f_IV.write(str(iVal)+"\n")
     # takepulses
     filename=outname+"_"+str(v)+".root"
     flags=""

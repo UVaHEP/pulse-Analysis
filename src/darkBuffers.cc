@@ -218,6 +218,8 @@ int main(int argc, char **argv) {
     for (int i = 0; i < waveform.size(); i++) { // translate buffer to histogram
       hist->SetBinContent(i, -1*waveform[i]);
     }
+    // check if voltage is inverted - Can make this smarter...
+    if (TMath::Abs(hist->GetMinimum())>TMath::Abs(hist->GetMaximum())) hist->Scale(-1);
     
     dPk->SetBuffer(hist,timebase);
     dPk->AnalyzePeaks();
