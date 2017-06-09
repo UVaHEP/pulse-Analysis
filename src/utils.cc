@@ -77,7 +77,8 @@ int DarkPeaker::AnalyzePeaks(){
 
   // find peaks
   double threshold;
-  if (_peThreshold>-1e19) threshold = _peThreshold / buf->GetMaximum();
+  if (_peThreshold>-1e19)
+    threshold = TMath::Min(_peThreshold / buf->GetMaximum(),0.99999);
   else threshold = (snglPeak/2) / buf->GetMaximum();
   //cout << "snglPeak/2 : " << snglPeak/2 << endl;
   //
@@ -244,8 +245,8 @@ void DarkPeaker::FindBackground(){
 // find noise from distribution pulse height spectrum
 void DarkPeaker::FindNoise(){
   // background subtracted sample data
-  hdist->SetBins(200,0,buf->GetMaximum());  // distribution of ADC counts
-  hscan->SetBins(200,0,buf->GetMaximum()/3);  // ADC samples above threshold
+  hdist->SetBins(256,0,1<<14);  // distribution of ADC counts
+  hscan->SetBins(256,0,1<<14);  // ADC samples above threshold
   
   for (int i = 1; i <= buf->GetNbinsX(); i++){
     double val=buf->GetBinContent(i) - hbkg->GetBinContent(i);
@@ -291,6 +292,7 @@ void DarkPeaker::FindNoise(){
   //std::cout <<
   //  "1PE peak not found, estimate noise to be above "<< _peThreshold << std::endl;
 }
+
 // dark count rate in MHz
 double DarkPeaker::CalcDarkRate(){
   if (buf) return npeaks / (dT*1e6*buf->GetNbinsX());
