@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
 
   TH1F *dT  = new  TH1F("dT", "Time Steps [s]", -0.5,0,0.5);
   dT->Fill(0.0, timebase);
-  TH1F *dV = new TH1F("dV", "Voltage Steps [mV]", -0.5,0,1.5);
+  TH1F *dV = new TH1F("dV", "Voltage Steps [mV]", 2,-0.5,1.5);
   dV->Fill(0.0, adc2mV);
   dV->Fill(1.0, mvScale);
   std::cout << "dV:" << adc2mV << std::endl; 
