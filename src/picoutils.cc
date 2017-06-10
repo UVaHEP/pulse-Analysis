@@ -22,14 +22,16 @@ void setupScope(ps5000a &dev, chRange &range, int samples) {
 }
 
 
-void autoRange(ps5000a &dev){
+int autoRange(ps5000a &dev){
   vector <vector<short> > data;
-  int mvRange[]={10,20,50,100,200,500,1000,2000,500};
+  int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
   dev.setChRange(picoscope::A, PS_10MV);
   dev.setCaptureCount(1);
   chRange autoRange=PS_10MV;
+  int mvScale=0;
   for ( int psRange=PS_10MV; psRange < PS_1V; psRange++ ){
     std::cout<<"Autoranging pass: " << mvRange[psRange] << "mV range" << std::endl;
+    mvScale=mvRange[psRange];
     autoRange=(chRange)psRange;
     dev.prepareBuffers();
     dev.captureBlock(); 
@@ -43,10 +45,11 @@ void autoRange(ps5000a &dev){
 	}
       }
     } // end of buffer loop
-    if (!overThresh) return;
+    if (!overThresh) return mvScale;  // CLEAN ME UP!
     // set picoscope to next highest voltage
     dev.setChRange(picoscope::A, autoRange);
   }
+  return mvScale;
 }
 
 // fix me to work for a specified number of buffers and remove some code below

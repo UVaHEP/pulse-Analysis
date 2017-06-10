@@ -20,10 +20,10 @@ using std::vector;
 //class DarkPeaker : public TSpectrum { // alternative design
 class DarkPeaker{ 
 public:
-  DarkPeaker(double peThreshold=-1e20);
+  DarkPeaker();
   ~DarkPeaker(){;}
 
-  int AnalyzePeaks();
+  int AnalyzePeaks(double peThreshold);
   double CalcDarkRate(); /// simple peak rate in MHz
   void DumpPeaks();
   void FindNoise();
@@ -64,6 +64,7 @@ private:
   TF1  *tfNoise;
   int npeaks;
   double _peThreshold;
+  double _noiseCut;
   double snglPeak;
   vector<double> peaksX;
   vector<double> peaksY;
