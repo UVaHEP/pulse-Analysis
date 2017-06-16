@@ -29,7 +29,7 @@ int autoRange(ps5000a &dev){
   dev.setCaptureCount(1);
   chRange autoRange=PS_10MV;
   int mvScale=0;
-  for ( int psRange=PS_10MV; psRange < PS_1V; psRange++ ){
+  for ( int psRange=PS_10MV; psRange <= PS_5V; psRange++ ){
     std::cout<<"Autoranging pass: " << mvRange[psRange] << "mV range" << std::endl;
     mvScale=mvRange[psRange];
     autoRange=(chRange)psRange;

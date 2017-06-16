@@ -2,6 +2,7 @@
 #include "ps5000a.h"
 #include "TFile.h"
 #include "TGraph.h" 
+#include "TH1I.h"
 #include "TH2F.h"
 #include "TString.h"
 #include "TCanvas.h"
@@ -39,16 +40,16 @@ void usage(char **argv){
   fprintf(stderr, " -a write out all buffers. 10 are written as default\n");
   fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
   fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
-  fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_20MV,PS_50MV,PS_100MV]\n");
-  fprintf(stderr, "                     !! currently over written by auto ranging feature\n");
-  fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
-  fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
+  fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_10MV,PS_20MV,PS_50MV,PS_100MV,PS_500MV,PS_1V,PS_2V,PS_5V]\n");;
   fprintf(stderr, " -q : close displays and quit program automatically\n");
   fprintf(stderr, " -0 : quiet option\n");
 }
 
 int main(int argc, char **argv) {
   TString outfn="darkBuffers.root";
+  TString tsRanges[]={"PS_10MV","PS_20MV","PS_50MV","PS_100MV","PS200MV","PS_500MV","PS_1V","PS_2V","PS_5V"};
+  int DATA_VERSION=1;  // data format version for output ROOT file
+  chRange range = PS_20MV;  // default range
   int samples = 40000;  // default samples and buffer numbers
   int nbuffers = 50;    // default number of buffers to take
   int nbuffersWrite=10; // default number of buffers to write
@@ -59,8 +60,9 @@ int main(int argc, char **argv) {
   int opt;
   bool quit=false;
   bool quiet=false;
-  bool userThreshold = false; 
-  chRange range = PS_20MV;
+  bool userThreshold = false;
+  bool autorange=true;
+  bool validRange=false;
   TString fileToOpen;
   while ((opt = getopt(argc, argv, "s:b:o:P:R:f:uhq0a")) != -1) {
     switch (opt) {
@@ -83,18 +85,14 @@ int main(int argc, char **argv) {
       peThreshold=atof(optarg);
       std::cout<<"1PE value " << peThreshold<<std::endl;
     case 'R':
-      if (TString(optarg)=="PS_100MV") {
-	range = PS_100MV;
-	std::cout<<"setting range to PS_100MV"<<std::endl;
+      autorange=false;
+      for (int i=0; i<sizeof(tsRanges)/sizeof(TString); i++){
+	if (TString(optarg)==tsRanges[i]){
+	  range=(chRange)(i);
+	  validRange=true;
+	}
       }
-      if (TString(optarg)=="PS_50MV") {
-	range = PS_50MV;
-	std::cout<<"setting range to PS_50MV"<<std::endl;
-      }
-      else if (TString(optarg)=="PS_20MV") {
-	std::cout<<"setting range to PS_20MV"<<std::endl;
-      }
-      else std::cout<<"Unknown range, defaulting to PS_20MV"<<std::endl;
+      if (!validRange) std::cout<<"Unknown range, defaulting to PS_20MV"<<std::endl;
       break;
     case 'q':   // exit when finished
       quit=true;  // not implemented
@@ -134,7 +132,9 @@ int main(int argc, char **argv) {
     timebase = dev.timebaseNS();  // despite the name this returns units of seconds
 
     // auto range, set number of buffers to acquire AFTER autoRange
-    mvScale=autoRange(dev);
+    if (autorange) {
+      mvScale=autoRange(dev);
+    }
     
     // run GUI to pick 1PE threshold
     if (userThreshold) {
@@ -509,6 +509,10 @@ int main(int argc, char **argv) {
   hSigmaOMean->SetBinContent(1,onePEsigmaOmean);
   hSigmaOMean->Write();
 
+  //Save Version for data format
+  TH1I *hVersion = new TH1I("hVersion","Data format Version",1,-1,1);
+  hVersion->SetBinContent(1,DATA_VERSION);
+  hVersion->Write();
 
   
  
