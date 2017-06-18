@@ -34,6 +34,7 @@ eHShared = libenv.SharedLibrary('eventHandler.so', ['eventHandlerDict.cc', 'even
 env.Install('#/lib', eHShared)
 env.Alias('install','/opt/uvahep/bin')
 env.Program('darkBuffers', ['darkBuffers.cc', 'utils.cc', 'picoutils.cc'])
+env.Program('darkBuffersUnaltered', ['darkBuffers_unaltered.cc', 'utils.cc', 'picoutils.cc'])
 env.Program('pulseMeasurements', ['pulseMeasurements.cc'])
 
 ##Grace E. Cummings added to test new scripts
@@ -42,3 +43,4 @@ env.Program('lightBuffersMorePeaks',['lightBuffersMorePeaks.cc','lightutils.cc']
 
 ##TA Added a Model 6000 Series Light Buffers Script
 env.Program('lightBuffersMorePeaks6000',['lightBuffersMorePeaks6000.cc','lightutils.cc'])
+env.Program('pulseAverage', ['pulseAverage.cc'])

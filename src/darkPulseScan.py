@@ -117,7 +117,7 @@ for i in range(nsteps+1):
     darkRate=tf.Get("hRate").GetBinContent(1);
     error=tf.Get("hRate").GetBinError(1);
     tg.SetPoint(tg.GetN(),v,darkRate/1e6);
-    tg.SetPointError(tg.GetN()-1,0,error);
+    tg.SetPointError(tg.GetN()-1,0,error/1e6);
     afterRate=tf.Get("hAp").GetBinContent(1);
     error=tf.Get("hAp").GetBinError(1);
     tga.SetPoint(tga.GetN(),v,afterRate);
