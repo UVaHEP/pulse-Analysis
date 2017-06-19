@@ -10,6 +10,7 @@
 #include "TFile.h"
 #include "TH1F.h"
 #include "TH2F.h"
+#include "TF1.h"
 #include "TProfile.h"
 #include "TString.h"
 #include <TApplication.h>
@@ -22,6 +23,8 @@
 
 
 using namespace picoscope;
+
+void pulseFitter(TProfile *h, double dt, int ncells=1);
 
 void setupPicoscope(ps6000 &dev, chRange range, int samples, int nwaveforms, bool invert = false) {
 
@@ -93,9 +96,11 @@ int main(int argc, char **argv) {
   TString outfn        = "lightPulseMeasurement_defaultFileName.root";
   int samples          = 3000;       // number of samples per waveform
   int nbuffers         = 10000;     // number of waveforms per capture cycle
+  int ncells           = 1;         // njumber of cells if applying fit
   int opt;
   bool invert = false;
-  while ((opt = getopt(argc, argv, "s:b:o:i")) != -1) {
+  bool doFit = false;
+  while ((opt = getopt(argc, argv, "s:b:o:n:iF")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
@@ -110,6 +115,10 @@ int main(int argc, char **argv) {
     case 'i':
       invert = true;
       break;
+    case 'n':
+      ncells=atoi(optarg);
+    case 'F':
+      doFit = true; 
     default: /* '?' */
       fprintf(stderr, "Usage: %s",argv[0]);
       fprintf(stderr, "-s samples to capture, -b nbuffers[10000],  -o output[lightPulseMeasurement_defaultFileName.root");
@@ -135,7 +144,7 @@ int main(int argc, char **argv) {
   
   TH1F *hdata     = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
   TH1F *hdataMv   = new TH1F("hdataMv","Pulses in mV", waveSize, 0, waveSize);
-  TProfile *hprof = new TProfile("hprof","Profile of all pulses, mV measurements", waveSize, 0, waveSize,"S");
+  TProfile *hprof = new TProfile("hprof","Profile of all pulses, mV measurements", waveSize, 0, waveSize, "S");
   
   for (auto &w : data) {
     for (int i = 0; i < w.size(); i++) {
@@ -152,8 +161,14 @@ int main(int argc, char **argv) {
   tc->cd();
   
   hprof->DrawCopy();
-
+  if (doFit) pulseFitter(hprof,timebase,ncells); 
+  
+  
   hprof->Write();
+  TH1F *dT  = new  TH1F("dT", "Time Steps [s]", 1,-0.5,0.5);
+  dT->Fill(0.0, timebase);
+  TH1F *hRange  = new  TH1F("hRange", "Picoscope Range Setting", 1,-0.5,0.5);
+  dT->Fill(0.0, range);
   f->Close(); 
 
   tc->Connect("TCanvas","Closed()","TApplication",gApplication,"Terminate()");
@@ -166,4 +181,73 @@ int main(int argc, char **argv) {
   return 0;
 
 
+}
+
+// Y-range of TProfile is expected to be in millivolts
+void pulseFitter(TProfile *hprof, double dt, int ncells){
+  double rLoad=50;
+  double q_e=1.602e-19;
+  int nsamples=0;
+
+  // force positive polarity
+  double xmin=hprof->GetMinimum();
+  double xmax=hprof->GetMaximum();
+  if (TMath::Abs(xmin)>TMath::Abs(xmax)) hprof->Scale(-1);
+
+  // use first ~10% of range as baseline estimate
+  int BLSrange=0.1;
+  double baseline=0;
+  int nbins=hprof->GetNbinsX();
+  for (int i=1; i<=(int)(nbins*BLSrange); i++){
+    nsamples++;
+    baseline+=hprof->GetBinContent(i);
+  }
+  baseline/=nsamples;
+  
+  // Q = I*t = (V-baseline)/rLoad * t
+  // V in volts
+  double Q=(hprof->Integral()-hprof->GetNbinsX()*baseline)/rLoad*dt/1000;
+  Q=TMath::Abs(Q);
+  // calclate gain
+  double M = Q/ncells/q_e;
+
+  // do fit to falling edge y=exp(A + B*x), B=1/tau
+  double max=hprof->GetMaximum();
+  int blow=hprof->FindLastBinAbove(0.8*max);
+  int bhigh=hprof->FindLastBinAbove(0.2*xmax);
+  xmin=hprof->GetBinCenter(blow);
+  xmax=hprof->GetBinCenter(bhigh);
+
+  hprof->Fit("expo","Lq","",xmin,xmax);
+  TF1 *fnFall= (TF1*)(hprof->GetFunction("expo")->Clone("fnFall"));
+  double tauFall=TMath::Abs(1/hprof->GetFunction("expo")->GetParameter(1))*dt;
+
+
+  // fit rising edge
+  // note: the rising edge may be dominated by scope rise time
+  blow=hprof->FindFirstBinAbove(0.2*max);
+  bhigh=hprof->FindFirstBinAbove(0.8*xmax);
+  xmin=hprof->GetBinCenter(blow-1);
+  xmax=hprof->GetBinCenter(bhigh+1);
+  hprof->Fit("expo","Lq","",xmin,xmax);
+  double tauRise=TMath::Abs(1/hprof->GetFunction("expo")->GetParameter(1))*dt;
+
+
+  hprof->DrawCopy();
+  fnFall->DrawCopy("lsame");
+  std::cout << "baseline estimate: " << baseline << std::endl;
+  std::cout << "total charge in pulse: " << Q << std::endl;
+  std::cout << "tau(rising) " << tauRise << std::endl;
+  std::cout << "tau(falling) " << tauFall << std::endl;
+  std::cout << "Gain: " << M << std::endl;
+  std::cout << "Mean pulse height" << hprof->GetMaximum()-baseline;
+  if (ncells==1) cout << "ncells set to 1, divide gain by ncells" << std::endl;
+  // check that pulse is well centered and not truncated
+  int iRise=(1+tauRise/dt)*5;
+  int iFall=(1+tauFall/dt)*5;
+  if ( hprof->GetMaximum()-iRise < (int)(nbins*BLSrange) )
+    std::cout << "Baseline calculation may be biased.  Is the pulse too close to left edge of histogram?" << std::endl;
+  if ( hprof->GetMaximum()+iFall > nbins )
+    std::cout << "Pulse may be truncated at right side of histogram" << std::endl;
+  
 }

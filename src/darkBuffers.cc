@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
   TFile f(outfn, "RECREATE");
   TH1F *hist = 0;
 
-  TH1F *dT  = new  TH1F("dT", "Time Steps [s]", -0.5,0,0.5);
+  TH1F *dT  = new  TH1F("dT", "Time Steps [s]", 1,-0.5,0.5);
   dT->Fill(0.0, timebase);
   TH1F *dV = new TH1F("dV", "Voltage Steps [mV]", 2,-0.5,1.5);
   dV->Fill(0.0, adc2mV);
