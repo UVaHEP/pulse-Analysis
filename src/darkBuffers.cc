@@ -48,6 +48,7 @@ void usage(char **argv){
 int main(int argc, char **argv) {
   TString outfn="darkBuffers.root";
   TString tsRanges[]={"PS_10MV","PS_20MV","PS_50MV","PS_100MV","PS200MV","PS_500MV","PS_1V","PS_2V","PS_5V"};
+  int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
   int DATA_VERSION=1;  // data format version for output ROOT file
   chRange range = PS_20MV;  // default range
   int samples = 40000;  // default samples and buffer numbers
@@ -63,6 +64,7 @@ int main(int argc, char **argv) {
   bool userThreshold = false;
   bool autorange=true;
   bool validRange=false;
+  int mvScale;
   TString fileToOpen;
   while ((opt = getopt(argc, argv, "s:b:o:P:R:f:uhq0a")) != -1) {
     switch (opt) {
@@ -92,7 +94,11 @@ int main(int argc, char **argv) {
 	  validRange=true;
 	}
       }
-      if (!validRange) std::cout<<"Unknown range, defaulting to PS_20MV"<<std::endl;
+      if (!validRange) {
+	std::cout<<"Unknown range, defaulting to PS_20MV"<<std::endl;
+	mvScale=20;
+      }
+      else mvScale=mvRange[(int)range];
       break;
     case 'q':   // exit when finished
       quit=true;  // not implemented
@@ -125,7 +131,7 @@ int main(int argc, char **argv) {
   double timebase, adc2mV;
   
   if (nbufUser>0) nbuffers=nbufUser;
-  int mvScale=0;
+
   if (fileToOpen.Length()==0){
     dev.open(picoscope::PS_12BIT);
     setupScope(dev, range, samples); 
