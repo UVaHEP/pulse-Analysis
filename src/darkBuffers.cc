@@ -41,6 +41,9 @@ void usage(char **argv){
   fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
   fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
   fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_10MV,PS_20MV,PS_50MV,PS_100MV,PS_500MV,PS_1V,PS_2V,PS_5V]\n");;
+  fprintf(stderr, "                     !! currently over written by auto ranging feature\n");
+  fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
+  fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
   fprintf(stderr, " -q : close displays and quit program automatically\n");
   fprintf(stderr, " -0 : quiet option\n");
 }
