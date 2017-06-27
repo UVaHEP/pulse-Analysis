@@ -75,7 +75,8 @@ elif stepsize>0 and vmax>0:
 #loop over voltages
 vend=vmax
 
-tfScan=TFile(outname+".root","recreate")
+if args.usefile: tfScan=TFile(outname+"_.root","recreate")
+else: tfScan=TFile(outname+".root","recreate")
 tg=TGraphErrors(); tg.SetTitle("Dark count rate vs Voltage;V;MHz"); tg.SetName("gDCR")
 tg.SetMaximum(10)
 tga=TGraphErrors(); tga.SetTitle("Afterpulse rate vs Voltage"); tga.SetName("gAPRate")
@@ -90,30 +91,35 @@ tc.Divide(3,2)
 #print "nsteps",nsteps
 nbuf=args.nbuf
 
+vsteps=[]
 for i in range(nsteps+1):
-    v=round(voltage+i*stepsize,3)
+    vsteps.append(round(voltage+i*stepsize,3))
+
+for i in range(nsteps+1):
+    v=vsteps[i]
     print bcolors.HEADER+"\nStarting data at V= "+str(v)+bcolors.ENDC
-    ### set voltage
-    #subprocess.call(["setVoltage.py","-pqv"+str(v)])
     
-    iReading=subprocess.check_output(["setVoltage.py","-pqv"+str(v)])
-    print iReading
-    iVal=iReading.split("measure:")[1]
-    iVal=float(iVal.split()[0])
-    print "Readback current",iVal
-    # takepulses
+    # take pulses
     filename=outname+"_"+str(v)+".root"
     flags=""
     if args.quiet: flags="-0"
     if args.usefile:
         filename2=filename.replace(".root","_.root")
-        subprocess.call(["./darkBuffers",flags,"-qf"+filename, "-o"+filename2])
-                        
+        subprocess.call(["darkBuffers",flags,"-qf"+filename, "-o"+filename2])
+        resultsFile=filename2
+        iVal=0  # no readback voltage
     else:
-        subprocess.call(["./darkBuffers",flags,"-aqb"+str(nbuf), "-o"+filename])
+        #set voltage
+        subprocess.call(["setVoltage.py","-pqv"+str(v)])
+        iReading=subprocess.check_output(["setVoltage.py","-pqv"+str(v)])
+        iVal=iReading.split("measure:")[1]
+        iVal=float(iVal.split()[0])
+        print "Readback current",iVal    
+        subprocess.call(["darkBuffers",flags,"-aqb"+str(nbuf), "-o"+filename])
+        resultsFile=filename
 
-
-    tf=TFile(filename)
+    print "Reading",resultsFile
+    tf=TFile(resultsFile)
     darkRate=tf.Get("hRate").GetBinContent(1);
     error=tf.Get("hRate").GetBinError(1);
     tg.SetPoint(tg.GetN(),v,darkRate/1e6);
@@ -147,6 +153,7 @@ for i in range(nsteps+1):
     tc.cd(6);
     tge.Draw("ALP*")
     tc.Update()
+    tf.Close()
     
 if args.usefile==None: subprocess.call(["setVoltage.py"])
 

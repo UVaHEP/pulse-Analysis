@@ -171,6 +171,14 @@ int main(int argc, char **argv) {
   std::cout << "Timebase: " << timebase << std::endl;
   std::cout << "Samples/buffer: " << samples << std::endl;
   double timebaseNS=timebase*1e9;  
+
+
+  gStyle->SetOptStat(0);
+  TCanvas *tc,*tc1,*tcPT;
+  tc=new TCanvas("tc","Samples",50,20,1200,400);
+  tc1=new TCanvas("tc1","Peaks and Time distributions",0,450,1200,400);
+  tcPT=new TCanvas("tcPT","Peaks v. time",0,600,600,400);
+
   
   // open output file and setup storage elements
   TFile f(outfn, "RECREATE");
@@ -207,11 +215,6 @@ int main(int argc, char **argv) {
   // Diagnostic histogram to keep track of TSpectrum search threshold based on noise
   TH1F *hsearchThresh=new TH1F("hsearchThresh","1PE search threshold;Threshold (ADC)",64,0,maxPeakRange/16);
 
-  gStyle->SetOptStat(0);
-  TCanvas *tc,*tc1,*tcPT;
-  tc=new TCanvas("tc","Samples",50,20,1200,400);
-  tc1=new TCanvas("tc1","Peaks and Time distributions",0,450,1200,400);
-  tcPT=new TCanvas("tcPT","Peaks v. time",0,600,600,400);
   tc1->Divide(3,1);
   
   int totPeaks=0;
@@ -434,7 +437,7 @@ int main(int argc, char **argv) {
   }
   else {
     std::cout << "Skipped: too few entries" << std::endl;
-    hdTime01->Draw();
+    hdTime01->DrawCopy();
   }
   tc2->Update();
   hdTime01->Write();
@@ -457,7 +460,7 @@ int main(int argc, char **argv) {
   }
   else {
     std::cout << "Skipped: too few entries" << std::endl;
-    hdTime05->Draw();
+    hdTime05->DrawCopy();
   }
   tc2->Update();
   hdTime05->Write();
@@ -543,17 +546,17 @@ int main(int argc, char **argv) {
   std::cout << "1Pe Peak value: " << onePEadc << " (ADC)  " << onePEmV << " (mV)" << std::endl;
   std::cout << "===============================" << std::endl;
 
-  f.Close();
-
-
-  
-  std::cout<< "Close TCanvas: Peaks and Time distributions or ^C to exit" << std::endl;
-  tc1->Connect("TCanvas","Closed()","TApplication",gApplication,"Terminate()");
-  if (quit)
+  if (quit) {
+    f.Close();
     return 0;
-  else
+  }
+  else{
+    f.WriteHeader();  // protect data in case user exits by ^C
+    std::cout<< "Close TCanvas: Peaks and Time distributions to exit" << std::endl;
+    tc1->Connect("TCanvas","Closed()","TApplication",gApplication,"Terminate()");
     theApp.Run(true);
-  
+    f.Close();
+  }
   return 0;
 
 }
