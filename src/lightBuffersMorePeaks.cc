@@ -27,8 +27,8 @@ void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers) {
 
   //  dev.enableBandwidthLimit(picoscope::A); 
   dev.setTimebase(0);
-  dev.setSimpleTrigger(EXT, 18000, trgFalling, 0, 0);//When triggering off anything else
-  //dev.setSimpleTrigger(EXT, -10000, trgFalling, 0, 0);//When triggering off laser 
+  //dev.setSimpleTrigger(EXT, 18000, trgFalling, 0, 0);//When triggering off anything else
+  dev.setSimpleTrigger(EXT, -1000, trgFalling, 0, 0);//When triggering off laser 
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
   dev.setPostTriggerSamples(samples/2);

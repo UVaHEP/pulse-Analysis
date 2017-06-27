@@ -35,7 +35,7 @@ env.Install('#/lib', eHShared)
 env.Alias('install','/opt/uvahep/bin')
 env.Program('darkBuffers', ['darkBuffers.cc', 'utils.cc', 'picoutils.cc'])
 #env.Program('darkBuffersUnaltered', ['darkBuffers_unaltered.cc', 'utils.cc', 'picoutils.cc'])
-env.Program('pulseMeasurements', ['pulseMeasurements.cc'])
+env.Program('pulseMeasurements', ['pulseMeasurements.cc', 'picoutils.cc'])
 
 ##Grace E. Cummings added to test new scripts
 env.Program('lightBuffersMorePeaks',['lightBuffersMorePeaks.cc','lightutils.cc'])

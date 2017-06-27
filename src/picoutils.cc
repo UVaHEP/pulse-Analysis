@@ -22,11 +22,11 @@ void setupScope(ps5000a &dev, chRange &range, int samples) {
 }
 
 
-int autoRange(ps5000a &dev){
+int autoRange(ps5000a &dev, int nbuf){
   vector <vector<short> > data;
   int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
   dev.setChRange(picoscope::A, PS_10MV);
-  dev.setCaptureCount(1);
+  dev.setCaptureCount(nbuf);
   chRange autoRange=PS_10MV;
   int mvScale=0;
   for ( int psRange=PS_10MV; psRange <= PS_5V; psRange++ ){
@@ -35,7 +35,7 @@ int autoRange(ps5000a &dev){
     autoRange=(chRange)psRange;
     dev.prepareBuffers();
     dev.captureBlock(); 
-    data = dev.getWaveforms();
+    data = dev.getWaveforms();   // can we call ps5000aMaximumValue etc on this object?
     bool overThresh=false;
     for (auto &waveform : data) {
       for (int i = 0; i < waveform.size(); i++) {

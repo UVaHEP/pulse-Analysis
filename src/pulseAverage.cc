@@ -13,6 +13,7 @@
 #include "TF1.h"
 #include "TProfile.h"
 #include "TString.h"
+#include "TTimer.h" 
 #include <TApplication.h>
 #include <TCanvas.h>
 #include <TStyle.h>
@@ -24,19 +25,31 @@
 
 using namespace picoscope;
 
-void pulseFitter(TProfile *h, double dt, int ncells=1);
+struct FitResults {
+  double baseline;
+  double Qtotal;
+  int ncells;
+  double M;
+  double tauRise;
+  double tauFall;
+  double A;  // pulse amplitude
+};
 
-void setupPicoscope(ps6000 &dev, chRange range, int samples, int nwaveforms, bool invert = false) {
+
+struct FitResults pulseFitter(TProfile *h, double dt, int ncells=1);
+
+void setupPicoscope(ps6000 &dev, chRange range, float trigger, int samples, int nwaveforms, bool invert = false) {
 
   dev.open();
   dev.setChCoupling(picoscope::A, picoscope::DC_50R);
   dev.setChRange(picoscope::A, range);//allows us to set range on Picoscope
   dev.enableChannel(picoscope::A);
   dev.setTimebase(1); //400 ns
+  
   if (invert) 
-    dev.setSimpleTrigger(picoscope::A, -8000, trgFalling, 0, 0);
+    dev.setSimpleTrigger(picoscope::A, dev.mVToADC(trigger, range), trgFalling, 0, 0);
   else
-    dev.setSimpleTrigger(picoscope::A, 8000, trgRising, 0, 0); 
+    dev.setSimpleTrigger(picoscope::A, dev.mVToADC(trigger,range), trgRising, 0, 0); 
   
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
@@ -96,11 +109,12 @@ int main(int argc, char **argv) {
   TString outfn        = "lightPulseMeasurement_defaultFileName.root";
   int samples          = 3000;       // number of samples per waveform
   int nbuffers         = 10000;     // number of waveforms per capture cycle
-  int ncells           = 1;         // njumber of cells if applying fit
+  int ncells           = 1;         // number of cells if applying fit
+  float trigger        = 10;
   int opt;
   bool invert = false;
   bool doFit = false;
-  while ((opt = getopt(argc, argv, "s:b:o:n:iF")) != -1) {
+  while ((opt = getopt(argc, argv, "Fis:b:o:n:t:")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
@@ -116,12 +130,18 @@ int main(int argc, char **argv) {
       invert = true;
       break;
     case 'n':
+      std::cout << "optarg:" << optarg << std::endl;
       ncells=atoi(optarg);
+      break;
+    case 't':
+      trigger = atof(optarg);
+      break;
     case 'F':
-      doFit = true; 
+      doFit = true;
+      break;
     default: /* '?' */
       fprintf(stderr, "Usage: %s",argv[0]);
-      fprintf(stderr, "-s samples to capture, -b nbuffers[10000],  -o output[lightPulseMeasurement_defaultFileName.root");
+      fprintf(stderr, "-s samples to capture, -b nbuffers[10000],  -o output[lightPulseMeasurement_defaultFileName.root\n");
       exit(EXIT_FAILURE);
     }
   }
@@ -130,7 +150,8 @@ int main(int argc, char **argv) {
   TApplication theApp("App", &argc, argv, 0, -1);
   ps6000 dev;
   chRange range        = PS_1V;     //range on picoscope, will capture amplitudes over
-  setupPicoscope(dev, range, samples, nbuffers,invert);
+
+  setupPicoscope(dev, range, trigger, samples, nbuffers,invert);
   range = autoRange(dev, picoscope::A, range, samples);
   dev.setCaptureCount(nbuffers);
   dev.prepareBuffers();
@@ -159,16 +180,34 @@ int main(int argc, char **argv) {
   }
   TCanvas *tc=new TCanvas("Pulse Profile","Pulse Profile",1600,400);
   tc->cd();
+  TTimer *timer = new TTimer();
+  timer->Connect("Timeout()","TCanvas",tc,"Close()");
+  timer->Start(2000,kTRUE);
   
   hprof->DrawCopy();
-  if (doFit) pulseFitter(hprof,timebase,ncells); 
+  
+  struct FitResults result;
+  if (doFit) {
+    std::cout << "Fitting!" << std::endl;
+    result=pulseFitter(hprof,timebase,ncells);
+  }
   
   
   hprof->Write();
   TH1F *dT  = new  TH1F("dT", "Time Steps [s]", 1,-0.5,0.5);
-  dT->Fill(0.0, timebase);
+  dT->SetBinContent(1, timebase);
+  dT->Write();
   TH1F *hRange  = new  TH1F("hRange", "Picoscope Range Setting", 1,-0.5,0.5);
-  dT->Fill(0.0, range);
+  hRange->SetBinContent(1, range);
+  hRange->Write();
+  TH1F *hGain  = new  TH1F("hGain", "Calculated Gain", 1,-0.5,0.5);
+  hGain->SetBinContent(1, result.M);
+  hGain->Write();
+  TH1F *hAmpl  = new  TH1F("hAmpl", "Mean pulse amplitude", 1,-0.5,0.5);
+  hAmpl->SetBinContent(1, result.A);
+  hAmpl->Write();
+
+  
   f->Close(); 
 
   tc->Connect("TCanvas","Closed()","TApplication",gApplication,"Terminate()");
@@ -184,7 +223,7 @@ int main(int argc, char **argv) {
 }
 
 // Y-range of TProfile is expected to be in millivolts
-void pulseFitter(TProfile *hprof, double dt, int ncells){
+struct FitResults pulseFitter(TProfile *hprof, double dt, int ncells){
   double rLoad=50;
   double q_e=1.602e-19;
   int nsamples=0;
@@ -195,7 +234,7 @@ void pulseFitter(TProfile *hprof, double dt, int ncells){
   if (TMath::Abs(xmin)>TMath::Abs(xmax)) hprof->Scale(-1);
 
   // use first ~10% of range as baseline estimate
-  int BLSrange=0.1;
+  double BLSrange=0.1;
   double baseline=0;
   int nbins=hprof->GetNbinsX();
   for (int i=1; i<=(int)(nbins*BLSrange); i++){
@@ -213,8 +252,8 @@ void pulseFitter(TProfile *hprof, double dt, int ncells){
 
   // do fit to falling edge y=exp(A + B*x), B=1/tau
   double max=hprof->GetMaximum();
-  int blow=hprof->FindLastBinAbove(0.8*max);
-  int bhigh=hprof->FindLastBinAbove(0.2*xmax);
+  int blow=hprof->FindLastBinAbove(0.8*(max-baseline)+baseline);
+  int bhigh=hprof->FindLastBinAbove(0.2*(max-baseline)+baseline);
   xmin=hprof->GetBinCenter(blow);
   xmax=hprof->GetBinCenter(bhigh);
 
@@ -225,8 +264,8 @@ void pulseFitter(TProfile *hprof, double dt, int ncells){
 
   // fit rising edge
   // note: the rising edge may be dominated by scope rise time
-  blow=hprof->FindFirstBinAbove(0.2*max);
-  bhigh=hprof->FindFirstBinAbove(0.8*xmax);
+  blow=hprof->FindFirstBinAbove(0.2*(max-baseline)+baseline)-1;
+  bhigh=hprof->FindFirstBinAbove(0.8*(max-baseline)+baseline)-1;
   xmin=hprof->GetBinCenter(blow-1);
   xmax=hprof->GetBinCenter(bhigh+1);
   hprof->Fit("expo","Lq","",xmin,xmax);
@@ -240,14 +279,25 @@ void pulseFitter(TProfile *hprof, double dt, int ncells){
   std::cout << "tau(rising) " << tauRise << std::endl;
   std::cout << "tau(falling) " << tauFall << std::endl;
   std::cout << "Gain: " << M << std::endl;
-  std::cout << "Mean pulse height" << hprof->GetMaximum()-baseline;
+  std::cout << "Mean pulse height " << hprof->GetMaximum()-baseline << std::endl;
   if (ncells==1) cout << "ncells set to 1, divide gain by ncells" << std::endl;
   // check that pulse is well centered and not truncated
   int iRise=(1+tauRise/dt)*5;
   int iFall=(1+tauFall/dt)*5;
-  if ( hprof->GetMaximum()-iRise < (int)(nbins*BLSrange) )
-    std::cout << "Baseline calculation may be biased.  Is the pulse too close to left edge of histogram?" << std::endl;
-  if ( hprof->GetMaximum()+iFall > nbins )
+  if ( hprof->GetBinLowEdge(hprof->GetMaximumBin())-iRise < (int)(nbins*BLSrange) ) {
+    std::cout << "Baseline calculation may be biased.  Is the pulse too close to left edge of histogram? " << std::endl;
+  }
+  if ( hprof->GetBinLowEdge(hprof->GetMaximumBin())+iFall > nbins ){
     std::cout << "Pulse may be truncated at right side of histogram" << std::endl;
-  
+  }
+  struct FitResults result;
+  result.baseline=baseline;
+  result.Qtotal=Q;
+  result.ncells=ncells;
+  result.M=M;
+  result.tauRise=tauRise;
+  result.tauFall=tauFall;
+  result.A=hprof->GetMaximum()-baseline;
+  return result;
 }
+

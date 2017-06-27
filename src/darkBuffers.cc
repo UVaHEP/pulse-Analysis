@@ -139,8 +139,11 @@ int main(int argc, char **argv) {
 
     // auto range, set number of buffers to acquire AFTER autoRange
     if (autorange) {
+      std::cout << "Autoranging....." << std::endl;
       mvScale=autoRange(dev);
     }
+    Channel A = dev.getChannel(picoscope::A);
+    range = std::get<picoscope::arange>(A);
     
     // run GUI to pick 1PE threshold
     if (userThreshold) {

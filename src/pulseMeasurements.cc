@@ -1,7 +1,9 @@
 #include "picoscopeInterface.h"
 #include "ps5000a.h"
+#include "picoutils.h"
 #include "TFile.h"
 #include "TH1F.h"
+#include "TH1D.h"
 #include "TH2F.h"
 #include "TString.h"
 #include <TApplication.h>
@@ -31,8 +33,8 @@ void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers) {
 
   dev.enableBandwidthLimit(picoscope::A); 
   dev.setTimebase(1);
-  dev.setSimpleTrigger(EXT, 18000, trgFalling, 0, 0);
-  //dev.setSimpleTrigger(EXT, -10000, trgFalling, 0, 0); 
+  //dev.setSimpleTrigger(EXT, 18000, trgFalling, 0, 0);
+  dev.setSimpleTrigger(EXT, -5000, trgFalling, 0, 0); 
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
   dev.setPostTriggerSamples(samples/2);
@@ -40,15 +42,16 @@ void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers) {
   dev.prepareBuffers();  
 }
 
+
 int main(int argc, char **argv) {
 
   ps5000a dev;
   chRange range = PS_50MV;
-  int samples = 100;    // number of ADC samples per waveform
+  int samples = 100;    // number of ADC samples per waveform (200 ns)
   int nbuffers=10000;   // number of waveforms per capture cycle
   int nrepeat=5;        // number of capture cycles
   int nsave=20;         // number of waveforms to save for samples
-  int z0=0;              // starting point for background integral
+  int z0=0;             // starting point for background integral
   int xlow=samples/2;   // starting point for pulse integral
   int xwid=15;          // bins to integrate
   const int nBaseline=20; // number of bins to use to estimate baseline
@@ -58,7 +61,7 @@ int main(int argc, char **argv) {
   bool quiet=false;
   TString outfn="pulsed.root";
   
-  while ((opt = getopt(argc, argv, "b:c:S:n:o:hq0xa:w:z:")) != -1) {
+  while ((opt = getopt(argc, argv, "b:c:S:n:o:hq0xaw:z:")) != -1) {
     switch (opt) {
     case 'b':
       nbuffers=atoi(optarg);
@@ -104,11 +107,15 @@ int main(int argc, char **argv) {
   }
   TApplication theApp("App", &argc, argv, 0, -1);
   
-  setupPicoscope(dev, range, samples, nbuffers); 
+  setupPicoscope(dev, range, samples, nbuffers);
+  int mvScale = autoRange(dev,5000);
+  TH1F *hRange    = new TH1F("hRange","Picoscope range setting",1,-1,1);
+  hRange->SetBinContent(1,mvScale);
+  setupPicoscope(dev, range, samples, nbuffers);
 
-
+  
   TH2F *hpersist=new TH2F("hpersist","Persistence Display",samples,
-			0,samples,250,-0.5,15000-0.5);
+			  0,samples,400,-2010,31990);  // ADC counts are reported in steps of 20 units
   hpersist->GetXaxis()->SetTitle("Sample time [2ns/div]");
   
   TH2F *hpersistCopy = (TH2F*)hpersist->Clone();
@@ -116,14 +123,14 @@ int main(int argc, char **argv) {
   hpersistCopy->GetYaxis()->SetTitle("Threshold [ADC]");
    
   TH1F *hsum=new TH1F("hsum","Sum of wave data",samples,0,samples);
-  TH1F* hpulses1=new TH1F("hpulses1","Pulse area distribution",2000,-20000,200000);
+  TH1F* hpulses1=new TH1F("hpulses1","Pulse area distribution",2000,-20000,300000);
   hpulses1->GetXaxis()->SetTitle("Pulse Area");
-  TH1F* hpulses0=new TH1F("hpulses0","Pulse area distribution",2000,-20000,200000);
+  TH1F* hpulses0=new TH1F("hpulses0","Pulse area distribution",2000,-20000,300000);
   hpulses0->SetLineColor(kRed);
 
   TH1F* waveForms[nsave];
   int wavSaved=0;
-  
+
   for (int i = 0; i < nrepeat; i++) {
     cout << "Capturing Block:" << i << endl;     
     dev.captureBlock();
@@ -176,10 +183,20 @@ int main(int argc, char **argv) {
   
   // projections of persistance histogram to show counts vs threshold
   tc->cd(1)->SetLogy();
-  hpersistCopy->ProjectionY("_py1",xlow,xlow+xwid)->DrawCopy();
-  hpersistCopy->ProjectionY("_py0",z0,z0+xwid)->DrawCopy("same");
+  TH1D *hIntime = hpersistCopy->ProjectionY("_py1",xlow,xlow+xwid);
+  TH1D *hOotime = hpersistCopy->ProjectionY("_py0",z0,z0+xwid);
+  if (hOotime->GetMaximum() > hIntime->GetMaximum()) hIntime->SetMaximum(hOotime->GetMaximum()*1.10);
+  hIntime->Write();
+  hOotime->Write();
+  hIntime->Smooth();
+  hOotime->Smooth();
+  hIntime->DrawCopy("");
+  hOotime->SetLineColor(kRed);
+  hOotime->DrawCopy("same");
   hpersistCopy->GetXaxis()->SetTitle("Threshold [ADC]");
 
+
+  
   // plot the persistance histogram
   tc->cd(2);
   hpersist->DrawCopy("col");
@@ -199,6 +216,7 @@ int main(int argc, char **argv) {
   hpulses0->Write();
   hpulses1->Write(); 
   hsum->Write();
+  hRange->Write();
   // save integration parameters
   TVectorD vInt(2);
   vInt[0]=xlow;
