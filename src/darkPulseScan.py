@@ -107,17 +107,17 @@ for i in range(nsteps+1):
     if args.quiet: flags="-0"
     if args.usefile:
         filename2=filename.replace(".root","_.root")
-        subprocess.call(["./darkBuffers",flags,"-qf"+filename, "-o"+filename2,
-                         "-R"+args.range])
+        subprocess.call(["./darkBuffers",flags,"-qf"+filename, "-o"+filename2])
+                        
     else:
-        subprocess.call(["./darkBuffers",flags,"-aqb"+str(nbuf), "-o"+filename,
-                         "-R"+args.range])
+        subprocess.call(["./darkBuffers",flags,"-aqb"+str(nbuf), "-o"+filename])
+
 
     tf=TFile(filename)
     darkRate=tf.Get("hRate").GetBinContent(1);
     error=tf.Get("hRate").GetBinError(1);
     tg.SetPoint(tg.GetN(),v,darkRate/1e6);
-    tg.SetPointError(tg.GetN()-1,0,error);
+    tg.SetPointError(tg.GetN()-1,0,error/1e6);
     afterRate=tf.Get("hAp").GetBinContent(1);
     error=tf.Get("hAp").GetBinError(1);
     tga.SetPoint(tga.GetN(),v,afterRate);

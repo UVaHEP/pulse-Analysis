@@ -22,18 +22,20 @@ void setupScope(ps5000a &dev, chRange &range, int samples) {
 }
 
 
-void autoRange(ps5000a &dev){
+int autoRange(ps5000a &dev, int nbuf){
   vector <vector<short> > data;
-  int mvRange[]={10,20,50,100,200,500,1000,2000,500};
+  int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
   dev.setChRange(picoscope::A, PS_10MV);
-  dev.setCaptureCount(1);
+  dev.setCaptureCount(nbuf);
   chRange autoRange=PS_10MV;
-  for ( int psRange=PS_10MV; psRange < PS_1V; psRange++ ){
+  int mvScale=0;
+  for ( int psRange=PS_10MV; psRange <= PS_5V; psRange++ ){
     std::cout<<"Autoranging pass: " << mvRange[psRange] << "mV range" << std::endl;
+    mvScale=mvRange[psRange];
     autoRange=(chRange)psRange;
     dev.prepareBuffers();
     dev.captureBlock(); 
-    data = dev.getWaveforms();
+    data = dev.getWaveforms();   // can we call ps5000aMaximumValue etc on this object?
     bool overThresh=false;
     for (auto &waveform : data) {
       for (int i = 0; i < waveform.size(); i++) {
@@ -43,10 +45,11 @@ void autoRange(ps5000a &dev){
 	}
       }
     } // end of buffer loop
-    if (!overThresh) return;
+    if (!overThresh) return mvScale;  // CLEAN ME UP!
     // set picoscope to next highest voltage
     dev.setChRange(picoscope::A, autoRange);
   }
+  return mvScale;
 }
 
 // fix me to work for a specified number of buffers and remove some code below

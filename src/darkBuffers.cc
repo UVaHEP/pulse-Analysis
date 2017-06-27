@@ -2,6 +2,7 @@
 #include "ps5000a.h"
 #include "TFile.h"
 #include "TGraph.h" 
+#include "TH1I.h"
 #include "TH2F.h"
 #include "TString.h"
 #include "TCanvas.h"
@@ -39,16 +40,17 @@ void usage(char **argv){
   fprintf(stderr, " -a write out all buffers. 10 are written as default\n");
   fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
   fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
-  fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_20MV,PS_50MV,PS_100MV]\n");
-  fprintf(stderr, "                     !! currently over written by auto ranging feature\n");
-  fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
-  fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
+  fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_10MV,PS_20MV,PS_50MV,PS_100MV,PS_500MV,PS_1V,PS_2V,PS_5V]\n");;
   fprintf(stderr, " -q : close displays and quit program automatically\n");
   fprintf(stderr, " -0 : quiet option\n");
 }
 
 int main(int argc, char **argv) {
   TString outfn="darkBuffers.root";
+  TString tsRanges[]={"PS_10MV","PS_20MV","PS_50MV","PS_100MV","PS200MV","PS_500MV","PS_1V","PS_2V","PS_5V"};
+  int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
+  int DATA_VERSION=1;  // data format version for output ROOT file
+  chRange range = PS_20MV;  // default range
   int samples = 40000;  // default samples and buffer numbers
   int nbuffers = 50;    // default number of buffers to take
   int nbuffersWrite=10; // default number of buffers to write
@@ -59,8 +61,10 @@ int main(int argc, char **argv) {
   int opt;
   bool quit=false;
   bool quiet=false;
-  bool userThreshold = false; 
-  chRange range = PS_20MV;
+  bool userThreshold = false;
+  bool autorange=true;
+  bool validRange=false;
+  int mvScale;
   TString fileToOpen;
   while ((opt = getopt(argc, argv, "s:b:o:P:R:f:uhq0a")) != -1) {
     switch (opt) {
@@ -83,18 +87,18 @@ int main(int argc, char **argv) {
       peThreshold=atof(optarg);
       std::cout<<"1PE value " << peThreshold<<std::endl;
     case 'R':
-      if (TString(optarg)=="PS_100MV") {
-	range = PS_100MV;
-	std::cout<<"setting range to PS_100MV"<<std::endl;
+      autorange=false;
+      for (int i=0; i<sizeof(tsRanges)/sizeof(TString); i++){
+	if (TString(optarg)==tsRanges[i]){
+	  range=(chRange)(i);
+	  validRange=true;
+	}
       }
-      if (TString(optarg)=="PS_50MV") {
-	range = PS_50MV;
-	std::cout<<"setting range to PS_50MV"<<std::endl;
+      if (!validRange) {
+	std::cout<<"Unknown range, defaulting to PS_20MV"<<std::endl;
+	mvScale=20;
       }
-      else if (TString(optarg)=="PS_20MV") {
-	std::cout<<"setting range to PS_20MV"<<std::endl;
-      }
-      else std::cout<<"Unknown range, defaulting to PS_20MV"<<std::endl;
+      else mvScale=mvRange[(int)range];
       break;
     case 'q':   // exit when finished
       quit=true;  // not implemented
@@ -127,13 +131,19 @@ int main(int argc, char **argv) {
   double timebase, adc2mV;
   
   if (nbufUser>0) nbuffers=nbufUser;
+
   if (fileToOpen.Length()==0){
     dev.open(picoscope::PS_12BIT);
     setupScope(dev, range, samples); 
     timebase = dev.timebaseNS();  // despite the name this returns units of seconds
 
     // auto range, set number of buffers to acquire AFTER autoRange
-    autoRange(dev);
+    if (autorange) {
+      std::cout << "Autoranging....." << std::endl;
+      mvScale=autoRange(dev);
+    }
+    Channel A = dev.getChannel(picoscope::A);
+    range = std::get<picoscope::arange>(A);
     
     // run GUI to pick 1PE threshold
     if (userThreshold) {
@@ -163,10 +173,11 @@ int main(int argc, char **argv) {
   TFile f(outfn, "RECREATE");
   TH1F *hist = 0;
 
-  TH1F *dT  = new  TH1F("dT", "Time Steps [s]", 1,0,1);
+  TH1F *dT  = new  TH1F("dT", "Time Steps [s]", 1,-0.5,0.5);
   dT->Fill(0.0, timebase);
-  TH1F *dV = new TH1F("dV", "Voltage Steps [mV]", 1,0,1);
+  TH1F *dV = new TH1F("dV", "Voltage Steps [mV]", 2,-0.5,1.5);
   dV->Fill(0.0, adc2mV);
+  dV->Fill(1.0, mvScale);
   std::cout << "dV:" << adc2mV << std::endl; 
   dT->Write();
   dV->Write();
@@ -301,7 +312,7 @@ int main(int argc, char **argv) {
     
     if (nbuf<=nbuffersWrite) hist->Write(); 
     if (nbuffersWrite>0 && nbuf==1) dPk->GetBackground()->Write();
-
+    
     delete hist;
   }
   ///////////////////////////////////////////////////////////////////////////
@@ -321,9 +332,6 @@ int main(int argc, char **argv) {
   hTtot->Write();
 
   
-  TCanvas *tc2=new TCanvas("tc2","Peaks and Time distributions (0.1PE cut)",0,450,800,400);
-  tc2->Divide(2,1);
-
 
   // Fit the 1PE peak, then refine it
   hpeaks->Fit("gaus","0Q");
@@ -395,51 +403,79 @@ int main(int argc, char **argv) {
     }
   }
 
-  
+
   TCanvas *tcPT2=new TCanvas("tcPT2","Peaks v. time (0.1PE cut)",600,600,600,400);
   tcPT2->cd()->SetLogx();
   hdPT01->DrawCopy("col");
 
   
-  // redo the fit for DCR
-  tc2->cd(1);
+  TCanvas *tc2=new TCanvas("tc2","Peaks and Time distributions (PE_frac cut)",0,450,800,400);
+  tc2->Divide(2,1);
+
+ 
+  // redo the fit for DCR with 0.1 PE cut
+  double dcrFit01=0;
+  double dcrErr01=0;
+  double rateAP01=0;
+  double errAP01=0;
   std::cout << "** Extraction of DCR and Afterpulsing 0.1 PE cut" << std::endl;
-  dcrFitter->Fit(hdTime01,"L");
-  hdTime01->DrawCopy();
-  dcrFitter->GetApFit()->DrawCopy("same");
-  dcrFitter->GetDcrFcn()->DrawCopy("same");
-  dcrFitter->GetExpFit()->DrawCopy("same");
+  tc2->cd(1);
+  if (hdTime01->GetEntries()>=100){
+    dcrFitter->Fit(hdTime01,"L");
+    hdTime01->DrawCopy();
+    dcrFitter->GetApFit()->DrawCopy("same");
+    dcrFitter->GetDcrFcn()->DrawCopy("same");
+    dcrFitter->GetExpFit()->DrawCopy("same");
+    dcrFit01=dcrFitter->GetDCR();
+    rateAP01=dcrFitter->GetAPrate();
+  }
+  else {
+    std::cout << "Skipped: too few entries" << std::endl;
+    hdTime01->Draw();
+  }
   tc2->Update();
   hdTime01->Write();
-  TH1F *hRate=new TH1F("hRate","Dark Pulse Rate;;MHz",2,-1,2); // bin1 DCR fit, bin2 DCR count
+  
+  // redo the fit for DCR with 0.5 PE cut
+  double dcrFit05=0;
+  double dcrErr05=0;
+  double rateAP05=0;
+  double errAP05=0;
+  std::cout << "** Extraction of DCR and Afterpulsing 0.5PE cut" << std::endl;
+  tc2->cd(2);
+  if (hdTime05->GetEntries()>=100){
+    dcrFitter->Fit(hdTime05,"L");
+    hdTime05->DrawCopy();
+    dcrFitter->GetApFit()->DrawCopy("same");
+    dcrFitter->GetDcrFcn()->DrawCopy("same");
+    dcrFitter->GetExpFit()->DrawCopy("same");
+    double dcrFit05=dcrFitter->GetDCR();
+    double rateAP05=dcrFitter->GetAPrate();
+  }
+  else {
+    std::cout << "Skipped: too few entries" << std::endl;
+    hdTime05->Draw();
+  }
+  tc2->Update();
+  hdTime05->Write();
+
+  // bin1 DCR count, bin2 DCR fit0.5, bin3 DCR fit0.1
+  TH1F *hRate=new TH1F("hRate","Dark Pulse Rate;;MHz",3,-0.5,2.5);
   // DCR rate from counting
   double dcrCount=1.0*totPeaks05/timeTotal; // in Hz
-  hRate->SetBinContent(2,dcrCount);
-  hRate->SetBinError(2,TMath::Sqrt(vPeaks05->size())/timeTotal);
-  // DCR extracted from exponential fit
-  double dcrFit01=dcrFitter->GetDCR();
-  double dcrErr01=0;
-  double rateAP01=dcrFitter->GetAPrate();
-  double errAP01=0;
-  hRate->SetBinContent(1,dcrFit01);
-  hRate->SetBinError(1,dcrErr01);
+  hRate->SetBinContent(1,dcrCount);
+  hRate->SetBinError(1,TMath::Sqrt(vPeaks05->size())/timeTotal);
+  // DCR and after pulsing from fits
+  hRate->SetBinContent(2,dcrFit05);
+  hRate->SetBinError(2,dcrErr05);
+  hRate->SetBinContent(3,dcrFit01);
+  hRate->SetBinError(3,dcrErr01);
   hRate->Write();
   TH1F *hAp=new TH1F("hAp","After Pulse Rate",1,-1,1);
   hAp->SetBinContent(1,rateAP01);
   hAp->SetBinError(1,errAP01);
   hAp->Write();
 
-  tc2->cd(2);
-  std::cout << "** Extraction of DCR and Afterpulsing 0.5PE cut" << std::endl;
-  dcrFitter->Fit(hdTime05,"L");
-  hdTime05->DrawCopy();
-  dcrFitter->GetApFit()->DrawCopy("same");
-  dcrFitter->GetDcrFcn()->DrawCopy("same");
-  dcrFitter->GetExpFit()->DrawCopy("same");
-  double dcrFit05=dcrFitter->GetDCR();
-  double dcrErr05=0;
-  double rateAP05=dcrFitter->GetAPrate();
-  double errAP05=0;
       
   // cross talk  
   double xTalkFrac = 1.0*num1_5/vPeaks05->size();
@@ -481,6 +517,12 @@ int main(int argc, char **argv) {
   TH1F *hSigmaOMean = new TH1F("hSigmaOMean","Sigma/Mean",1,-1,1);
   hSigmaOMean->SetBinContent(1,onePEsigmaOmean);
   hSigmaOMean->Write();
+
+  //Save Version for data format
+  TH1I *hVersion = new TH1I("hVersion","Data format Version",1,-1,1);
+  hVersion->SetBinContent(1,DATA_VERSION);
+  hVersion->Write();
+
   
  
   std::cout << "===============================" << std::endl;

@@ -9,7 +9,7 @@ using std::vector;
 using namespace picoscope;
 
 void setupScope(ps5000a &dev, chRange &range, int samples);
-void autoRange(ps5000a &dev);
+int autoRange(ps5000a &dev, int nbuf=1);
 void acquireBuffers(ps5000a &dev, vector <vector<short> > &data);
 Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app);
 int readBuffers(TString filename, vector <vector<short> > &data, double &timebase, double &adc2mV);
