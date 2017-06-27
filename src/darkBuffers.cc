@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
   int iLimitL=5;  // pulse integration limits in bin counts [5]
   int iLimitH=18; // eg peak-ilimitL to peak+iLimitH [18]
   int nbufUser=0;
-  double peThreshold=0;
+  double peThreshold=-1;
   int opt;
   bool quit=false;
   bool quiet=false;
@@ -138,8 +138,8 @@ int main(int argc, char **argv) {
     // run GUI to pick 1PE threshold
     if (userThreshold) {
       peThreshold = userThresholdFn(dev, samples, theApp);
+      std::cout << "pe Threshold set by GUI: " << peThreshold << std::endl; 
     }
-    std::cout << "pe Threshold: " << peThreshold << std::endl; 
   
     dev.setCaptureCount(nbuffers);
     acquireBuffers(dev,data);
@@ -201,7 +201,7 @@ int main(int argc, char **argv) {
   tc1->Divide(3,1);
   
   int totPeaks=0;
-  DarkPeaker *dPk = new DarkPeaker(peThreshold/2);
+  DarkPeaker *dPk = new DarkPeaker();
 
   bool first=true;
   int nbuf=0;  // buffers processed 
@@ -222,7 +222,7 @@ int main(int argc, char **argv) {
     if (TMath::Abs(hist->GetMinimum())>TMath::Abs(hist->GetMaximum())) hist->Scale(-1);
     
     dPk->SetBuffer(hist,timebase);
-    dPk->AnalyzePeaks();
+    dPk->AnalyzePeaks(peThreshold);
     
     int npeaks=dPk->GetNPeaks();
     totPeaks+=npeaks;
@@ -484,7 +484,7 @@ int main(int argc, char **argv) {
   
  
   std::cout << "===============================" << std::endl;
-  std::cout << "Number of buffers: "<< nbuf << " total time: " << timeTotal << std::endl;
+  std::cout << "Number of buffers: "<< nbuf << " total time(s): " << timeTotal << std::endl;
   std::cout << "Number of peaks (minimal cut): " << totPeaks << std::endl;
   std::cout << "Number of peaks >0.1PE " << totPeaks01 << std::endl;
   std::cout << "Number of peaks >0.5PE " << totPeaks05 << std::endl;
@@ -502,7 +502,7 @@ int main(int argc, char **argv) {
 
 
   
-  std::cout<< "Close TCanvas: Peaks and Time distributions to exit" << std::endl;
+  std::cout<< "Close TCanvas: Peaks and Time distributions or ^C to exit" << std::endl;
   tc1->Connect("TCanvas","Closed()","TApplication",gApplication,"Terminate()");
   if (quit)
     return 0;

@@ -14,11 +14,10 @@ using std::endl;
 
 
 //DarkPeaker::DarkPeaker(double peThreshold) : TSpectrum(5000) {
-DarkPeaker::DarkPeaker(double peThreshold) {
+DarkPeaker::DarkPeaker() {
   tspectrum=new TSpectrum(5000,2);
   haveAnalysis=false;
   Reset();
-  if (peThreshold) _peThreshold=peThreshold;
   //tcD = new TCanvas("tcD","Dark Peak Analysis");
   // x-axis limits for these will be defined in FindNoise()
   hdist=new TH1F("hdist","Background subtracted ADC distribution",100,0,100);
@@ -41,6 +40,8 @@ void DarkPeaker::Reset(){
   hbkg=0;
   deltaT=0;
   npeaks=0;
+  _peThreshold=-1;
+  _noiseCut=0;
   haveAnalysis=false;
 }
 
@@ -62,7 +63,7 @@ TSPECTFLOAT* DarkPeaker::GetTSpectrumX(){ return tspectrum->GetPositionX();}
 TSPECTFLOAT* DarkPeaker::GetTSpectrumY(){ return tspectrum->GetPositionY();}
 
 
-int DarkPeaker::AnalyzePeaks(){
+int DarkPeaker::AnalyzePeaks(double peThreshold){
   if (!buf) {
     cout << "DarkPeaker::AnalyzePeaks : No buffer set!" << endl;
     return 1;
@@ -77,12 +78,15 @@ int DarkPeaker::AnalyzePeaks(){
 
   // find peaks
   double threshold;
-  if (_peThreshold>-1e19)
-    threshold = TMath::Min(_peThreshold / buf->GetMaximum(),0.99999);
-  else threshold = (snglPeak/2) / buf->GetMaximum();
-  //cout << "snglPeak/2 : " << snglPeak/2 << endl;
-  //
+  if (peThreshold>0) _peThreshold=peThreshold/ buf->GetMaximum();
+  else threshold = _noiseCut / buf->GetMaximum();
+
   double sigma=2; // this can/should be optimzed
+
+  if (threshold>1) {
+    npeaks=0;
+    return 0;
+  }
   npeaks=tspectrum->Search(buf,sigma,"nobackground,nomarkov,nodraw",threshold);
   //npeaks=tspectrum->Search(buf,sigma,"nomarkov,nodraw",threshold);
   //int npeaks=tspectrum->Search(buf,sigma,"nomarkov",threshold);
@@ -97,8 +101,10 @@ int DarkPeaker::AnalyzePeaks(){
   for (int i=0;i<npeaks;i++) {
     peaksX.push_back( xpeaks[index[i]] );
     peaksY.push_back( ypeaks[index[i]] );
-  }  
+  }
+  delete index, xpeaks, ypeaks;
   haveAnalysis=true;
+
   return 0;
 }
 
@@ -242,7 +248,9 @@ void DarkPeaker::FindBackground(){
 }
 
 
-// find noise from distribution pulse height spectrum
+// Find noise from distribution pulse height spectrum
+// Set pe search threshold based on noise distribution, this can be changed by the user when
+// calling the AnalyzePeaks method
 void DarkPeaker::FindNoise(){
   // background subtracted sample data
   hdist->SetBins(256,0,1<<14);  // distribution of ADC counts
@@ -257,9 +265,8 @@ void DarkPeaker::FindNoise(){
     }
   }		 
   
-  //Using hscan to locate and eliminate noise
-  //written by Grace E. Cummings, 22 July 2016
-  double binwid=hdist->GetBinWidth(1);
+
+  //  double binwid=hdist->GetBinWidth(1);
  
   //limits and relevant values
   double maxheightthresh = hscan->GetMaximum();
@@ -275,7 +282,7 @@ void DarkPeaker::FindNoise(){
     }
   }
 
-  //Creates Exponential fit of hscan to find lambda value. Fits the background contributions
+  // Exponential fit for hscan to find lambda value.
   TF1 *thresFit = new TF1("thresFit", "expo", xminThres, xmaxThres);
   gStyle->SetOptFit(0001);
   hscan->Fit("thresFit","Q0","",hscan->GetBinCenter(2),xendfit);
@@ -285,8 +292,8 @@ void DarkPeaker::FindNoise(){
   gPad->Update();
   double threshSlope = TMath::Abs(thresFit->GetParameter(1));
 
-  //Threshold now will be 4 times 1/slope value. This should select out most background. 4 times was determined visually
-  _peThreshold=4.5/threshSlope;  // BH tweak to 4.5 times
+  // This should select out most background. Ad hoc determination of magic number=4.5
+  _noiseCut=4.5/threshSlope;
   
   //hscan option
   //std::cout <<
