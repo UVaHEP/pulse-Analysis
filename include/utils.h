@@ -114,6 +114,6 @@ class FitDcrAp {
 void calcDcrAp(TH1F *hdTime, double &fitDCR, double &errDCR, double &rateAP, double errAP);
 
 
-double apCalc2D(TH2F *h, double dcr, double pe, double sigma);
+int apCalc2D(TH2F *h, double dcr, double pe, double sigma, bool show=false);
 
 #endif

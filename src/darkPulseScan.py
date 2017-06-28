@@ -77,13 +77,13 @@ vend=vmax
 
 if args.usefile: tfScan=TFile(outname+"_.root","recreate")
 else: tfScan=TFile(outname+".root","recreate")
-tg=TGraphErrors(); tg.SetTitle("Dark count rate vs Voltage;V;MHz"); tg.SetName("gDCR")
-tg.SetMaximum(10)
-tga=TGraphErrors(); tga.SetTitle("Afterpulse rate vs Voltage"); tga.SetName("gAPRate")
-tgb=TGraphErrors(); tgb.SetTitle("Crosstalk fraction vs. Voltage;V"); tgb.SetName("gXtalkFrac")
-tgc=TGraphErrors(); tgc.SetTitle("1PE Peak vs. Voltage;V"); tgc.SetName("gOnePE")
-tgd=TGraphErrors(); tgd.SetTitle("Sigma/Mean vs. Mean"); tgd.SetName("gSoM1")
-tge=TGraphErrors(); tge.SetTitle("Sigma/mean vs. Voltage;V"); tge.SetName("gSom2")
+tgDCR=TGraphErrors(); tgDCR.SetTitle("Dark count rate vs Voltage;V;MHz"); tgDCR.SetName("gDCR")
+tgDCR.SetMaximum(10)
+tgAP=TGraphErrors(); tgAP.SetTitle("Afterpulse rate vs Voltage"); tgAP.SetName("gAPRate")
+tgXT=TGraphErrors(); tgXT.SetTitle("Crosstalk fraction vs. Voltage;V"); tgXT.SetName("gXtalkFrac")
+tg1P=TGraphErrors(); tg1P.SetTitle("1PE Peak vs. Voltage;V"); tg1P.SetName("gOnePE")
+tgSMM=TGraphErrors(); tgSMM.SetTitle("Sigma/Mean vs. Mean"); tgSMM.SetName("gSoMvM")
+tgSMV=TGraphErrors(); tgSMV.SetTitle("Sigma/mean vs. Voltage;V"); tgSMV.SetName("gSoMvV")
 tIV=TGraph(); tIV.SetTitle("I vs V"); tIV.SetName("gIV")
 tc=TCanvas("cgr","Pulse Data",1500,1000)
 tc.Divide(3,2)
@@ -120,38 +120,44 @@ for i in range(nsteps+1):
 
     print "Reading",resultsFile
     tf=TFile(resultsFile)
+    version=tf.Get("hVersion").GetBinContent(1);
     darkRate=tf.Get("hRate").GetBinContent(1);
     error=tf.Get("hRate").GetBinError(1);
-    tg.SetPoint(tg.GetN(),v,darkRate/1e6);
-    tg.SetPointError(tg.GetN()-1,0,error/1e6);
-    afterRate=tf.Get("hAp").GetBinContent(1);
+    tgDCR.SetPoint(tgDCR.GetN(),v,darkRate/1e6);
+    tgDCR.SetPointError(tgDCR.GetN()-1,0,error/1e6);
+    if version==1:
+        apRate=tf.Get("hAp").GetBinContent(1);
+        apErr=tf.Get("hAp").GetBinError(1);
+    else:
+        apRate=tf.Get("hAp").GetBinContent(2);
+        apErr=tf.Get("hAp").GetBinError(2);
     error=tf.Get("hAp").GetBinError(1);
-    tga.SetPoint(tga.GetN(),v,afterRate);
-    tga.SetPointError(tga.GetN()-1,0,error);
+    tgAP.SetPoint(tgAP.GetN(),v,apRate);
+    tgAP.SetPointError(tgAP.GetN()-1,0,apErr);
     crossTalk=tf.Get("hCrossTalk").GetBinContent(1);
     error=tf.Get("hCrossTalk").GetBinError(1);
-    tgb.SetPoint(tgb.GetN(),v,crossTalk);
-    tgb.SetPointError(tgb.GetN()-1,0,error);
+    tgXT.SetPoint(tgXT.GetN(),v,crossTalk);
+    tgXT.SetPointError(tgXT.GetN()-1,0,error);
     pePeak=tf.Get("h1PePeak").GetBinContent(1);
     error=tf.Get("h1PePeak").GetBinError(1);
-    tgc.SetPoint(tgc.GetN(),v,pePeak);
-    tgc.SetPointError(tgc.GetN()-1,0,error);
+    tg1P.SetPoint(tg1P.GetN(),v,pePeak);
+    tg1P.SetPointError(tg1P.GetN()-1,0,error);
     sigmaOmean=tf.Get("hSigmaOMean").GetBinContent(1);
-    tgd.SetPoint(tgd.GetN(),pePeak,sigmaOmean);
-    tge.SetPoint(tge.GetN(),v,sigmaOmean);
+    tgSMM.SetPoint(tgSMM.GetN(),pePeak,sigmaOmean);
+    tgSMV.SetPoint(tgSMV.GetN(),v,sigmaOmean);
     tIV.SetPoint(tIV.GetN(),v,iVal);
     tc.cd(1);
-    tg.Draw("ALP*")
+    tgDCR.Draw("ALP*")
     tc.cd(2)
-    tga.Draw("ALP*")
+    tgAP.Draw("ALP*")
     tc.cd(3);
-    tgb.Draw("ALP*")
+    tgXT.Draw("ALP*")
     tc.cd(4);
-    tgc.Draw("ALP*")
+    tg1P.Draw("ALP*")
     tc.cd(5);
-    tgd.Draw("ALP*")
+    tgSMM.Draw("ALP*")
     tc.cd(6);
-    tge.Draw("ALP*")
+    tgSMV.Draw("ALP*")
     tc.Update()
     tf.Close()
     
@@ -160,12 +166,12 @@ if args.usefile==None: subprocess.call(["setVoltage.py"])
 #time.sleep(2)
 tc.SaveAs(outname+".pdf")
 tfScan.cd()
-tg.Write()
-tga.Write()
-tgb.Write()
-tgc.Write()
-tgd.Write()
-tge.Write()
+tgDCR.Write()
+tgAP.Write()
+tgXT.Write()
+tg1P.Write()
+tgSMM.Write()
+tgSMV.Write()
 tIV.Write()
 tfScan.Write()
 tfScan.Close()

@@ -1,9 +1,11 @@
 #include "utils.h"
 #include "TMath.h"
 #include "TPaveStats.h"
+#include "TCanvas.h"
 #include "TStyle.h"
 #include "TAxis.h"
 #include "TList.h"
+#include "TBox.h"
 #include <stdlib.h>
 #include <pthread.h>
 #include <iostream>
@@ -507,22 +509,32 @@ TF1* FitDcrAp::GetDcrFcn(){
 }
 
 // estimate afterpulses from 2D plot
-double apCalc2D(TH2F *h, double dcr, double pe, double sigma){
-  int ymaxAP=h->GetYaxis()->FindBin(pe-3*sigma);
+int apCalc2D(TH2F *h, double dcr, double pe, double sigma, bool show){
+  int ymaxAP=h->GetYaxis()->FindBin(pe-2.5*sigma);
   int ymax=h->GetNbinsY();
   int xmaxAP=h->GetXaxis()->FindBin(1/dcr);  // DCR in Hz
   int xmax=h->GetNbinsX();
-  double count=0;
   double countAP=0;
   for (int bx=1; bx<xmax;bx++){
     for (int by=1; by<ymax;by++){
       int gbin=h->GetBin(bx,by);
       double val=h->GetBinContent(gbin);
-      count+=val;
       if (bx<xmaxAP && by<ymaxAP) countAP+=val;
     }
   }
-  return countAP/(count-countAP);
+  if (show){
+    TCanvas *tc=new TCanvas("tctemp","2D AP measurement");
+    tc->cd(1)->SetLogx();
+    h->DrawCopy("col");
+    TBox *box=new TBox(h->GetXaxis()->GetBinLowEdge(1),
+		       h->GetYaxis()->GetBinLowEdge(1),
+		       h->GetXaxis()->GetBinLowEdge(xmaxAP),
+		       h->GetYaxis()->GetBinLowEdge(ymaxAP));
+    box->SetLineColor(2);
+    box->SetFillStyle(0);
+    box->Draw("l");
+  }
+  return countAP;
 }
 
 

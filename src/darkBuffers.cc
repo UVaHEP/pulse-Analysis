@@ -17,6 +17,14 @@
 #include <getopt.h>
 #include <stdio.h>
 
+
+/*
+Data VERSIONS
+1: 
+2: Add 2d AP calculation to second bin of afterpulse histogram
+ */
+
+
 using namespace picoscope;
 
 class peakData {
@@ -52,7 +60,7 @@ int main(int argc, char **argv) {
   TString outfn="darkBuffers.root";
   TString tsRanges[]={"PS_10MV","PS_20MV","PS_50MV","PS_100MV","PS200MV","PS_500MV","PS_1V","PS_2V","PS_5V"};
   int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
-  int DATA_VERSION=1;  // data format version for output ROOT file
+  int DATA_VERSION=2;  // data format version for output ROOT file
   chRange range = PS_20MV;  // default range
   int samples = 40000;  // default samples and buffer numbers
   int nbuffers = 50;    // default number of buffers to take
@@ -338,7 +346,6 @@ int main(int argc, char **argv) {
   hTtot->Write();
 
   
-
   // Fit the 1PE peak, then refine it
   hpeaks->Fit("gaus","0Q");
   TF1 *peFcn=hpeaks->GetFunction("gaus");
@@ -347,7 +354,14 @@ int main(int argc, char **argv) {
   std::cout << "** Fit to peak height distribution" << std::endl;
   hpeaks->Fit("gaus","0","",mu-2*sig,mu+2*sig);
   peFcn=hpeaks->GetFunction("gaus");
-  double onePE=peFcn->GetParameter(1);  // 1PE peak in ADC, bkg corrected
+
+  double onePEadc=peFcn->GetParameter(1);  // 1PE peak in ADC, bkg corrected
+  double onePEadcErr = peFcn->GetParError(1);
+  double onePEadcSigma = peFcn->GetParameter(2);
+  double onePEadcSigmaErr = peFcn->GetParError(2);
+  double onePEsigmaOmean = onePEadcSigma/onePEadc;
+  double onePEmV = onePEadc*adc2mV;
+   
   tc1->cd(1);
   hpeaks->DrawCopy();
   peFcn->DrawCopy("same");
@@ -358,9 +372,9 @@ int main(int argc, char **argv) {
   vector<peakData> *vPeaks05 = new vector<peakData>;
   
   for (auto &pkData : *vPeaks){
-    if (pkData.height<onePE/10) continue;
+    if (pkData.height<onePEadc/10) continue;
     vPeaks01->push_back(pkData);
-    if (pkData.height<onePE/2) continue;
+    if (pkData.height<onePEadc/2) continue;
     vPeaks05->push_back(pkData);
   }
   int totPeaks01= vPeaks01->size();
@@ -395,12 +409,13 @@ int main(int argc, char **argv) {
       hdPT01->Fill((pk.xpeak-last.xpeak)*timebase,pk.height);
     }
   }
+  hdPT01->Write();
   
   // loop over 0.5 PE peaks
   int num1_5=0;  // for cross talk
   for (int i=0; i<vPeaks05->size(); i++){
     peakData &pk=(*vPeaks05)[i];
-    if ( pk.height>=onePE*1.5 ) num1_5++;
+    if ( pk.height>=onePEadc*1.5 ) num1_5++;
     if (i==0) continue;
     peakData &last=(*vPeaks05)[i-1];
     double dT=0;
@@ -408,7 +423,7 @@ int main(int argc, char **argv) {
       hdTime05->Fill((pk.xpeak-last.xpeak)*timebaseNS);
     }
   }
-
+  hdTime05->Write();
 
   TCanvas *tcPT2=new TCanvas("tcPT2","Peaks v. time (0.1PE cut)",600,600,600,400);
   tcPT2->cd()->SetLogx();
@@ -477,12 +492,23 @@ int main(int argc, char **argv) {
   hRate->SetBinContent(3,dcrFit01);
   hRate->SetBinError(3,dcrErr01);
   hRate->Write();
-  TH1F *hAp=new TH1F("hAp","After Pulse Rate",1,-1,1);
-  hAp->SetBinContent(1,rateAP01);
+
+  int nAP=apCalc2D(hdPT01, dcrCount, onePEadc, onePEadcSigma, true);
+  
+
+  // After pulsing results
+  TH1F *hAp=new TH1F("hAp","After Pulse Rate",2,-1,1);
+  hAp->SetBinContent(1,rateAP01);  // from fit of dT distribution
   hAp->SetBinError(1,errAP01);
+  hAp->SetBinContent(2,(float)nAP/totPeaks05);
+  hAp->SetBinError(2,TMath::Sqrt(nAP)/totPeaks05);
   hAp->Write();
 
-      
+
+
+
+
+  
   // cross talk  
   double xTalkFrac = 1.0*num1_5/vPeaks05->size();
   TH1F *hCrossTalk = new TH1F("hCrossTalk","Crosstalk Fraction",1,-1,1);
@@ -496,14 +522,7 @@ int main(int argc, char **argv) {
   hCount->SetBinContent(1,totPeaks05);
   hCount->Write();
   
-  double onePEadc = peFcn->GetParameter(1);
-  double onePEmV = onePEadc*adc2mV;
-  double onePEadcErr = peFcn->GetParError(1);
-  double onePEadcSigma = peFcn->GetParameter(2);
-  double onePEadcSigmaErr = peFcn->GetParError(2);
-  double onePEsigmaOmean = onePEadcSigma/onePEadc;
-
-   
+ 
   //Save mean of 1PE peak
   TH1F *h1PePeak = new TH1F("h1PePeak","1 PE Peak Mean Value",1,-1,1);
   h1PePeak->SetBinContent(1,onePEadc);
