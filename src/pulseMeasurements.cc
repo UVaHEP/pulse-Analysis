@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
     default: /* '?' */
       fprintf(stderr, "Usage: %s ",argv[0]);
       fprintf(stderr, "-b nbuffers[10000] -c nrepeat[5] -w nsave[20] -z0 starting bin for background integration[0]");
-      fprintf(stderr, "-o output[darkBuffers.root]\n");
+      fprintf(stderr, "-o output[pulsed.root]\n");
       fprintf(stderr, "-a automatically find integration window\n");
       fprintf(stderr, "-T times out the TCanvas to close it");
       fprintf(stderr, "-x starting bin of pulse integral[50]\n");
@@ -119,10 +119,11 @@ int main(int argc, char **argv) {
   TApplication theApp("App", &argc, argv, 0, -1);
   
   setupPicoscope(dev, range, samples, nbuffers);
-  int mvScale = autoRange(dev,5000);
-  TH1F *hRange    = new TH1F("hRange","Picoscope range setting",1,-1,1);
+  int mvScale = autoRange(dev,50000);
+  TH1F *hRange    = new TH1F("hRange","Picoscope range setting",2,0,2);
   hRange->SetBinContent(1,mvScale);
-  setupPicoscope(dev, range, samples, nbuffers);
+  hRange->SetBinContent(2,1.0*mvScale/32767);
+  dev.setCaptureCount(nbuffers);
    
   vector<TH1F *> wavesSave;
   

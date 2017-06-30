@@ -21,6 +21,9 @@
 #include <iostream>
 #include <getopt.h>
 #include <stdio.h>
+#include <vector>
+
+using std::vector;
 
 
 using namespace picoscope;
@@ -45,12 +48,14 @@ void setupPicoscope(ps6000 &dev, chRange range, float trigger, int samples, int 
   dev.setChRange(picoscope::A, range);//allows us to set range on Picoscope
   dev.enableChannel(picoscope::A);
   dev.setTimebase(1); //400 ns
-  
+  /*  
   if (invert) 
     dev.setSimpleTrigger(picoscope::A, dev.mVToADC(trigger, range), trgFalling, 0, 0);
   else
     dev.setSimpleTrigger(picoscope::A, dev.mVToADC(trigger,range), trgRising, 0, 0); 
-  
+  */
+    dev.setSimpleTrigger(AUX, -5000, trgFalling, 0, 0);//When triggering off anything else
+
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
   dev.setPostTriggerSamples(samples/2);
@@ -60,6 +65,7 @@ void setupPicoscope(ps6000 &dev, chRange range, float trigger, int samples, int 
   
 }
 
+/*
 chRange autoRange(ps6000 &dev, chName name, chRange startRange, int samples) {
 
   chRange ranges[] = { PS_50MV, PS_100MV, PS_200MV, PS_500MV, PS_1V, PS_2V, PS_5V};
@@ -101,7 +107,40 @@ chRange autoRange(ps6000 &dev, chName name, chRange startRange, int samples) {
   return ranges[pos];
     
 }
+*/
 
+chRange autoRange(ps6000 &dev, int nbuf){
+  vector <vector<short> > data;
+  int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
+  chRange ranges[] = {PS_10MV,PS_20MV, PS_50MV, PS_100MV, PS_200MV, PS_500MV, PS_1V, PS_2V, PS_5V};
+  dev.setChRange(picoscope::A, PS_50MV);
+  dev.setCaptureCount(nbuf);
+  chRange autoRange=PS_50MV;
+  int mvScale=0;
+  chRange range;
+  for ( int psRange=PS_50MV; psRange <= PS_5V; psRange++ ){
+    std::cout<<"Autoranging pass: " << mvRange[psRange] << "mV range" << std::endl;
+    mvScale=mvRange[psRange];
+    range=ranges[psRange];
+    autoRange=(chRange)psRange;
+    dev.prepareBuffers();
+    dev.captureBlock(); 
+    data = dev.getWaveforms();   // can we call ps5000aMaximumValue etc on this object?
+    bool overThresh=false;
+    for (auto &waveform : data) {
+      for (int i = 0; i < waveform.size(); i++) {
+	if (abs(waveform[i])>26000){      // ~ 80% of ADC range
+	  overThresh=true;
+	  break;
+	}
+      }
+    } // end of buffer loop
+    if (!overThresh) return range;  // CLEAN ME UP!
+    // set picoscope to next highest voltage
+    dev.setChRange(picoscope::A, autoRange);
+  }
+  return range;
+}
 
 
 int main(int argc, char **argv) {
@@ -110,7 +149,7 @@ int main(int argc, char **argv) {
   int samples          = 3000;       // number of samples per waveform
   int nbuffers         = 10000;     // number of waveforms per capture cycle
   int ncells           = 1;         // number of cells if applying fit
-  float trigger        = 10;
+  float trigger        = 5;
   int opt;
   bool invert = false;
   bool doFit = false;
@@ -149,15 +188,19 @@ int main(int argc, char **argv) {
   
   TApplication theApp("App", &argc, argv, 0, -1);
   ps6000 dev;
-  chRange range        = PS_1V;     //range on picoscope, will capture amplitudes over
+  chRange range;     //range on picoscope, will capture amplitudes over
 
   setupPicoscope(dev, range, trigger, samples, nbuffers,invert);
-  range = autoRange(dev, picoscope::A, range, samples);
+  range=autoRange(dev,500);
+  setupPicoscope(dev, range, trigger, samples, nbuffers,invert);
   dev.setCaptureCount(nbuffers);
   dev.prepareBuffers();
   dev.captureBlock();
+  int nSaves=20;
+  vector<TH1F *> wavesSave;
   vector <vector<short> > &data = dev.getWaveforms();
   Int_t waveSize  = data.front().size();
+  float adcmV=dev.adcToMv(1, range);
   dev.close();
   float timebase = dev.timebaseNS();
   std::cout << "Captured:" << data.size() << " waveforms." << std::endl; 
@@ -166,11 +209,14 @@ int main(int argc, char **argv) {
   TH1F *hdata     = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
   TH1F *hdataMv   = new TH1F("hdataMv","Pulses in mV", waveSize, 0, waveSize);
   TProfile *hprof = new TProfile("hprof","Profile of all pulses, mV measurements", waveSize, 0, waveSize, "S");
-  
+
   for (auto &w : data) {
     for (int i = 0; i < w.size(); i++) {
       hdata->SetBinContent(i, -1*w[i]);
       hdataMv->SetBinContent(i,dev.adcToMv(-1*w[i],range));
+    }
+    if (wavesSave.size()<nSaves){
+      wavesSave.push_back((TH1F*)hdata->Clone(TString::Format("wave%02d",wavesSave.size()+1)));
     }
     for (int i=1; i<=hdataMv->GetNbinsX();i++){
       hprof->Fill(hdataMv->GetBinCenter(i),
@@ -191,14 +237,16 @@ int main(int argc, char **argv) {
     std::cout << "Fitting!" << std::endl;
     result=pulseFitter(hprof,timebase,ncells);
   }
-  
+  for (int i=0; i<wavesSave.size(); i++) wavesSave[i]->Write();
+
   
   hprof->Write();
   TH1F *dT  = new  TH1F("dT", "Time Steps [s]", 1,-0.5,0.5);
   dT->SetBinContent(1, timebase);
   dT->Write();
-  TH1F *hRange  = new  TH1F("hRange", "Picoscope Range Setting", 1,-0.5,0.5);
+  TH1F *hRange  = new  TH1F("hRange", "Picoscope Range Setting", 2,0,2);
   hRange->SetBinContent(1, range);
+  hRange->SetBinContent(2, adcmV);
   hRange->Write();
   TH1F *hGain  = new  TH1F("hGain", "Calculated Gain", 1,-0.5,0.5);
   hGain->SetBinContent(1, result.M);

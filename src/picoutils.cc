@@ -3,6 +3,7 @@
 #include "TFile.h"
 #include "TKey.h"
 #include "TH1F.h"
+#include "TMath.h"
 #include "TCanvas.h"
 #include "eventHandler.h"
 
@@ -31,26 +32,27 @@ int autoRange(ps5000a &dev, int nbuf){
   int mvScale=0;
   for ( int psRange=PS_10MV; psRange <= PS_5V; psRange++ ){
     std::cout<<"Autoranging pass: " << mvRange[psRange] << "mV range" << std::endl;
+    autoRange=(chRange)(psRange);
     mvScale=mvRange[psRange];
-    autoRange=(chRange)psRange;
+    dev.setChRange(picoscope::A, autoRange);
     dev.prepareBuffers();
     dev.captureBlock(); 
     data = dev.getWaveforms();   // can we call ps5000aMaximumValue etc on this object?
     bool overThresh=false;
     for (auto &waveform : data) {
       for (int i = 0; i < waveform.size(); i++) {
-	if (abs(waveform[i])>26000){      // ~ 80% of ADC range
+	if (TMath::Abs(waveform[i])>26000){      // ~ 80% of ADC range
 	  overThresh=true;
 	  break;
 	}
       }
     } // end of buffer loop
     if (!overThresh) return mvScale;  // CLEAN ME UP!
-    // set picoscope to next highest voltage
-    dev.setChRange(picoscope::A, autoRange);
   }
   return mvScale;
 }
+
+
 
 // fix me to work for a specified number of buffers and remove some code below
 void acquireBuffers(ps5000a &dev, vector <vector<short> > &data){
