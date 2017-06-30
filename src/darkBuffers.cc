@@ -320,7 +320,7 @@ int main(int argc, char **argv) {
     hdPT->GetBinXYZ(bmax,bx,by,bz);
     int maxYbin=3.2*by;
     //    float maxYbin=hdPT->ProjectionY()->FindLastBinAbove(0);
-    hdPT->GetYaxis()->SetRange(1,maxYbin);
+    //hdPT->GetYaxis()->SetRange(1,maxYbin);
     hdPT->DrawCopy("col");
     tcPT->Update();
     
@@ -394,10 +394,15 @@ int main(int argc, char **argv) {
 
   TH2F *hdPT01=new TH2F(*hdPT);
   hdPT01->Reset();
-  hdPT01->SetName("hdPeakvTimeCut");
+  hdPT01->SetName("hdPeakvTimeCut01");
   hdPT01->SetTitle("Peaks vs Delta times (0.1PE cut)");
   hdPT01->SetMaximum(hdPT->GetMaximum());  // fix the color maps to same values
-
+  TH2F *hdPT05=new TH2F(*hdPT);
+  hdPT05->Reset();
+  hdPT05->SetName("hdPeakvTimeCut05");
+  hdPT05->SetTitle("Peaks vs Delta times (0.5PE cut)");
+  hdPT05->SetMaximum(hdPT->GetMaximum());  // fix the color maps to same values
+  
   // loop over 0.1 PE peaks
   for (int i=0; i<vPeaks01->size(); i++){
     peakData &pk=(*vPeaks01)[i];
@@ -421,6 +426,7 @@ int main(int argc, char **argv) {
     double dT=0;
     if (last.buffer==pk.buffer) {
       hdTime05->Fill((pk.xpeak-last.xpeak)*timebaseNS);
+      hdPT05->Fill((pk.xpeak-last.xpeak)*timebase,pk.height);
     }
   }
   hdTime05->Write();
@@ -493,19 +499,19 @@ int main(int argc, char **argv) {
   hRate->SetBinError(3,dcrErr01);
   hRate->Write();
 
-  int nAP=apCalc2D(hdPT01, dcrCount, onePEadc, onePEadcSigma, true);
-  
+  int nAP01=apCalc2D(hdPT01, dcrCount, onePEadc, onePEadcSigma, true);
+  int nAP05=apCalc2D(hdPT05, dcrCount, onePEadc, onePEadcSigma, true);
+
 
   // After pulsing results
-  TH1F *hAp=new TH1F("hAp","After Pulse Rate",2,-1,1);
+  TH1F *hAp=new TH1F("hAp","After Pulse Probability",3,0,3);
   hAp->SetBinContent(1,rateAP01);  // from fit of dT distribution
   hAp->SetBinError(1,errAP01);
-  hAp->SetBinContent(2,(float)nAP/totPeaks05);
-  hAp->SetBinError(2,TMath::Sqrt(nAP)/totPeaks05);
+  hAp->SetBinContent(2,(float)nAP01/totPeaks05);
+  hAp->SetBinError(2,TMath::Sqrt(nAP01)/totPeaks05);
+  hAp->SetBinContent(3,(float)nAP05/totPeaks05);
+  hAp->SetBinError(3,TMath::Sqrt(nAP05)/totPeaks05);
   hAp->Write();
-
-
-
 
 
   
@@ -560,7 +566,7 @@ int main(int argc, char **argv) {
   std::cout << "Afterpulse probability (fit01):  " << rateAP01 << std::endl;
   std::cout << "Dark pulse rate (fit05): " << dcrFit05/1e6 << " MHz" << std::endl;
   std::cout << "Afterpulse probability (fit05):  " << rateAP05 << std::endl;
-  std::cout << "Afterpulse probability (2D):  " << apCalc2D(hdPT,1e-6/dcrCount,mu,sig) << std::endl;
+  std::cout << "Afterpulse probability (2D):  " << (float)nAP05/totPeaks05 << std::endl;
   std::cout << "Crosstalk Fraction (1.5 PE threshold): " << xTalkFrac << std::endl;
   std::cout << "1Pe Peak value: " << onePEadc << " (ADC)  " << onePEmV << " (mV)" << std::endl;
   std::cout << "===============================" << std::endl;

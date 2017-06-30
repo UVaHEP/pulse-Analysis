@@ -79,7 +79,7 @@ if args.usefile: tfScan=TFile(outname+"_.root","recreate")
 else: tfScan=TFile(outname+".root","recreate")
 tgDCR=TGraphErrors(); tgDCR.SetTitle("Dark count rate vs Voltage;V;MHz"); tgDCR.SetName("gDCR")
 tgDCR.SetMaximum(10)
-tgAP=TGraphErrors(); tgAP.SetTitle("Afterpulse rate vs Voltage"); tgAP.SetName("gAPRate")
+tgAP=TGraphErrors(); tgAP.SetTitle("Afterpulse probability vs Voltage"); tgAP.SetName("gAPRate")
 tgXT=TGraphErrors(); tgXT.SetTitle("Crosstalk fraction vs. Voltage;V"); tgXT.SetName("gXtalkFrac")
 tg1P=TGraphErrors(); tg1P.SetTitle("1PE Peak vs. Voltage;V"); tg1P.SetName("gOnePE")
 tgSMM=TGraphErrors(); tgSMM.SetTitle("Sigma/Mean vs. Mean"); tgSMM.SetName("gSoMvM")
@@ -129,8 +129,8 @@ for i in range(nsteps+1):
         apRate=tf.Get("hAp").GetBinContent(1);
         apErr=tf.Get("hAp").GetBinError(1);
     else:
-        apRate=tf.Get("hAp").GetBinContent(2);
-        apErr=tf.Get("hAp").GetBinError(2);
+        apRate=tf.Get("hAp").GetBinContent(3);
+        apErr=tf.Get("hAp").GetBinError(3);
     error=tf.Get("hAp").GetBinError(1);
     tgAP.SetPoint(tgAP.GetN(),v,apRate);
     tgAP.SetPointError(tgAP.GetN()-1,0,apErr);
