@@ -164,7 +164,8 @@ for i in range(nsteps+1):
 if args.usefile==None: subprocess.call(["setVoltage.py"])
 
 #time.sleep(2)
-tc.SaveAs(outname+".pdf")
+if args.usefile: tc.SaveAs(outname+"_.pdf")
+else: tc.SaveAs(outname+".pdf")
 tfScan.cd()
 tgDCR.Write()
 tgAP.Write()

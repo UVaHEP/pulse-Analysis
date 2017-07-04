@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
       break;
     case 'P':
       peThreshold=atof(optarg);
-      std::cout<<"1PE value " << peThreshold<<std::endl;
+      std::cout<<"User input 1PE value " << peThreshold<<std::endl;
     case 'R':
       autorange=false;
       for (int i=0; i<sizeof(tsRanges)/sizeof(TString); i++){
@@ -347,12 +347,12 @@ int main(int argc, char **argv) {
 
   
   // Fit the 1PE peak, then refine it
-  hpeaks->Fit("gaus","0Q");
+  hpeaks->Fit("gaus","0Q","",4096,32768); // hack assume peaks are > 0.5 division
   TF1 *peFcn=hpeaks->GetFunction("gaus");
   double mu=peFcn->GetParameter(1);
   double sig=peFcn->GetParameter(2);
   std::cout << "** Fit to peak height distribution" << std::endl;
-  hpeaks->Fit("gaus","0","",mu-2*sig,mu+2*sig);
+  hpeaks->Fit("gaus","","",mu-2*sig,mu+2*sig);
   peFcn=hpeaks->GetFunction("gaus");
 
   double onePEadc=peFcn->GetParameter(1);  // 1PE peak in ADC, bkg corrected
