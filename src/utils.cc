@@ -83,7 +83,7 @@ int DarkPeaker::AnalyzePeaks(double peThreshold){
   if (peThreshold>0) _peThreshold=peThreshold/ buf->GetMaximum();
   else threshold = _noiseCut / buf->GetMaximum();
 
-  double sigma=2; // this can/should be optimzed
+  double sigma= 30;// Add adjustment to options //2; // this can/should be optimzed
 
   if (threshold>1) {
     npeaks=0;

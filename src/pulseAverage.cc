@@ -13,7 +13,8 @@
 #include "TF1.h"
 #include "TProfile.h"
 #include "TString.h"
-#include "TTimer.h" 
+#include "TTimer.h"
+#include "TSystem.h"
 #include <TApplication.h>
 #include <TCanvas.h>
 #include <TStyle.h>
@@ -22,7 +23,7 @@
 #include <getopt.h>
 #include <stdio.h>
 #include <vector>
-
+#include <algorithm>
 using std::vector;
 
 
@@ -47,6 +48,7 @@ void setupPicoscope(ps6000 &dev, chRange range, float trigger, int samples, int 
   dev.setChCoupling(picoscope::A, picoscope::DC_50R);
   dev.setChRange(picoscope::A, range);//allows us to set range on Picoscope
   dev.enableChannel(picoscope::A);
+
   dev.setTimebase(1); //400 ns
   /*  
   if (invert) 
@@ -54,11 +56,12 @@ void setupPicoscope(ps6000 &dev, chRange range, float trigger, int samples, int 
   else
     dev.setSimpleTrigger(picoscope::A, dev.mVToADC(trigger,range), trgRising, 0, 0); 
   */
-    dev.setSimpleTrigger(AUX, -5000, trgFalling, 0, 0);//When triggering off anything else
+  //dev.setSimpleTrigger(picoscope::A, dev.mVToADC(trigger,range), trgRising, 0, 0); 
+  dev.setSimpleTrigger(AUX, -100, trgFalling, 0, 0);//When triggering off anything else Jul 10 changed to rising from falling
 
   dev.setSamples(samples); 
-  dev.setPreTriggerSamples(samples/2);
-  dev.setPostTriggerSamples(samples/2);
+  //dev.setPreTriggerSamples(samples/10);
+  //dev.setPostTriggerSamples(samples/90);
   dev.setCaptureCount(nwaveforms);
   dev.prepareBuffers();  
 
@@ -110,11 +113,15 @@ chRange autoRange(ps6000 &dev, chName name, chRange startRange, int samples) {
 */
 
 chRange autoRange(ps6000 &dev, int nbuf){
+  TFile autorangeF("autorange.root", "UPDATE");
+  
   vector <vector<short> > data;
   int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
   chRange ranges[] = {PS_10MV,PS_20MV, PS_50MV, PS_100MV, PS_200MV, PS_500MV, PS_1V, PS_2V, PS_5V};
-  dev.setChRange(picoscope::A, PS_50MV);
+  //dev.setChRange(picoscope::A, PS_50MV);
+  //dev.setChCoupling(picoscope::A, picoscope::DC_50R);
   dev.setCaptureCount(nbuf);
+  gSystem->Sleep(1000);
   chRange autoRange=PS_50MV;
   int mvScale=0;
   chRange range;
@@ -123,21 +130,51 @@ chRange autoRange(ps6000 &dev, int nbuf){
     mvScale=mvRange[psRange];
     range=ranges[psRange];
     autoRange=(chRange)psRange;
+    // set picoscope to test voltage range
+    dev.setChRange(picoscope::A, autoRange);
     dev.prepareBuffers();
     dev.captureBlock(); 
     data = dev.getWaveforms();   // can we call ps5000aMaximumValue etc on this object?
+    dev.prepareBuffers();
+    dev.captureBlock(); 
+    data = dev.getWaveforms();
     bool overThresh=false;
+    int wcount = 0;
+    TH1F *autoWave = NULL;
     for (auto &waveform : data) {
+      //print first 5
+      if (wcount < 2) {
+	autoWave = new TH1F("hdata_autorange", "Autorange Waveforms",
+			    waveform.size(), 0, waveform.size());
+	for (int i = 0; i < waveform.size(); i++) {
+	  autoWave->SetBinContent(i+1, waveform[i]);
+	}
+	autoWave->Write();
+	
+	std::sort(waveform.begin(), waveform.end(), std::greater<short>());
+	for (int i = 0; i < 5; i++) {
+	  std::cout << waveform[i] << "\t";
+	}
+	
+	std::cout << std::endl;
+	std::cout << std::endl;
+	
+
+      wcount++;
+      }
+
+
+      
       for (int i = 0; i < waveform.size(); i++) {
+
 	if (abs(waveform[i])>26000){      // ~ 80% of ADC range
+	  //std::cout << "Overthresh" << std::endl;
 	  overThresh=true;
 	  break;
 	}
       }
     } // end of buffer loop
     if (!overThresh) return range;  // CLEAN ME UP!
-    // set picoscope to next highest voltage
-    dev.setChRange(picoscope::A, autoRange);
   }
   return range;
 }
@@ -146,14 +183,16 @@ chRange autoRange(ps6000 &dev, int nbuf){
 int main(int argc, char **argv) {
 
   TString outfn        = "lightPulseMeasurement_defaultFileName.root";
-  int samples          = 3000;       // number of samples per waveform
+  int samples          = 1000;       // number of samples per waveform
   int nbuffers         = 10000;     // number of waveforms per capture cycle
   int ncells           = 1;         // number of cells if applying fit
-  float trigger        = 5;
+  float trigger        = 50;
   int opt;
+  int freq             = 0;//frequency of laser
+  float vexcess        = 99;
   bool invert = false;
   bool doFit = false;
-  while ((opt = getopt(argc, argv, "Fis:b:o:n:t:")) != -1) {
+  while ((opt = getopt(argc, argv, "Fis:b:o:n:t:f:r:")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
@@ -178,21 +217,30 @@ int main(int argc, char **argv) {
     case 'F':
       doFit = true;
       break;
+    case 'f':
+      freq = atoi(optarg);
+      break;
+    case 'r':
+      vexcess = atof(optarg);
+      break;
     default: /* '?' */
       fprintf(stderr, "Usage: %s",argv[0]);
       fprintf(stderr, "-s samples to capture, -b nbuffers[10000],  -o output[lightPulseMeasurement_defaultFileName.root\n");
       exit(EXIT_FAILURE);
     }
   }
+      std::cout <<"over voltage " << vexcess << std::endl;
+      std::cout <<"frequency  " << freq<< std::endl;
+      std::cout <<"ncells     " << ncells <<std::endl;
 
   
   TApplication theApp("App", &argc, argv, 0, -1);
   ps6000 dev;
-  chRange range;     //range on picoscope, will capture amplitudes over
+  chRange range = PS_50MV;     //range on picoscope, will capture amplitudes over
 
   setupPicoscope(dev, range, trigger, samples, nbuffers,invert);
-  range=autoRange(dev,500);
-  setupPicoscope(dev, range, trigger, samples, nbuffers,invert);
+  range=autoRange(dev,1000);
+  //setupPicoscope(dev, range, trigger, samples, nbuffers,invert);
   dev.setCaptureCount(nbuffers);
   dev.prepareBuffers();
   dev.captureBlock();
@@ -203,7 +251,8 @@ int main(int argc, char **argv) {
   float adcmV=dev.adcToMv(1, range);
   dev.close();
   float timebase = dev.timebaseNS();
-  std::cout << "Captured:" << data.size() << " waveforms." << std::endl; 
+  std::cout << "Captured:" << data.size() << " waveforms." << std::endl;
+  std::cout << "Buf Size:" << waveSize << " samples." << std::endl;
   TFile *f = new TFile(outfn, "RECREATE");  
   
   TH1F *hdata     = new TH1F("hdata","The Pulses", waveSize, 0, waveSize);
@@ -222,7 +271,7 @@ int main(int argc, char **argv) {
       hprof->Fill(hdataMv->GetBinCenter(i),
 		  hdataMv->GetBinContent(i));
     }
-
+    hdata->Clear();
   }
   TCanvas *tc=new TCanvas("Pulse Profile","Pulse Profile",1600,400);
   tc->cd();
@@ -254,7 +303,13 @@ int main(int argc, char **argv) {
   TH1F *hAmpl  = new  TH1F("hAmpl", "Mean pulse amplitude", 1,-0.5,0.5);
   hAmpl->SetBinContent(1, result.A);
   hAmpl->Write();
-
+  TH1F *hFreq  = new TH1F("hFreq", "Frequency of laser", 1,-0.5,0.5);
+  hFreq->SetBinContent(1,freq);
+  hFreq->Write();
+  TH1F *hVexcess = new TH1F("hVexcess", "Overvolage (V)",1,-0.5,0.5);
+  std::cout<<"excess voltage "<< vexcess<< std::endl;
+  hVexcess->SetBinContent(1,vexcess);
+  hVexcess->Write(); 
   
   f->Close(); 
 
@@ -322,12 +377,12 @@ struct FitResults pulseFitter(TProfile *hprof, double dt, int ncells){
 
   hprof->DrawCopy();
   fnFall->DrawCopy("lsame");
-  std::cout << "baseline estimate: " << baseline << std::endl;
+  std::cout << "baseline estimate: " << baseline << " mV" << std::endl;
   std::cout << "total charge in pulse: " << Q << std::endl;
   std::cout << "tau(rising) " << tauRise << std::endl;
   std::cout << "tau(falling) " << tauFall << std::endl;
   std::cout << "Gain: " << M << std::endl;
-  std::cout << "Mean pulse height " << hprof->GetMaximum()-baseline << std::endl;
+  std::cout << "Mean pulse height " << hprof->GetMaximum()-baseline << " mV" << std::endl;
   if (ncells==1) cout << "ncells set to 1, divide gain by ncells" << std::endl;
   // check that pulse is well centered and not truncated
   int iRise=(1+tauRise/dt)*5;

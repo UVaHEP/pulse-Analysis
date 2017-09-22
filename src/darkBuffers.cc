@@ -44,6 +44,7 @@ public:
 void usage(char **argv){
   fprintf(stderr, "\nUsage: %s [options]\n",argv[0]);
   fprintf(stderr, " -s nsamples[40000] : number of samples per buffer\n");
+  fprintf(stderr, " -t <timebase> timebase to use\n");
   fprintf(stderr, " -b nbuffers[50] : number of buffers\n");
   fprintf(stderr, " -a write out all buffers. 10 are written as default\n");
   fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
@@ -68,6 +69,8 @@ int main(int argc, char **argv) {
   int iLimitL=5;  // pulse integration limits in bin counts [5]
   int iLimitH=18; // eg peak-ilimitL to peak+iLimitH [18]
   int nbufUser=0;
+  float invert = 1.0;
+  unsigned int tb = 1;
   double peThreshold=-1;
   int opt;
   bool quit=false;
@@ -75,9 +78,12 @@ int main(int argc, char **argv) {
   bool userThreshold = false;
   bool autorange=true;
   bool validRange=false;
+  bool invertFlag = false;
   int mvScale;
   TString fileToOpen;
-  while ((opt = getopt(argc, argv, "s:b:o:P:R:f:uhq0a")) != -1) {
+
+  
+  while ((opt = getopt(argc, argv, "s:b:o:P:R:t:f:uhiq0a")) != -1) {
     switch (opt) {
     case 's':
       samples = atoi(optarg);
@@ -93,6 +99,9 @@ int main(int argc, char **argv) {
     case 'o':
       outfn = optarg;
       std::cout<<"set output file " << outfn<<std::endl;
+      break;
+    case 't':
+      tb = atoi(optarg);
       break;
     case 'P':
       peThreshold=atof(optarg);
@@ -110,6 +119,9 @@ int main(int argc, char **argv) {
 	mvScale=20;
       }
       else mvScale=mvRange[(int)range];
+      break;
+    case 'i':
+      invertFlag = true;
       break;
     case 'q':   // exit when finished
       quit=true;  // not implemented
@@ -131,6 +143,9 @@ int main(int argc, char **argv) {
     }
   }
 
+  if (invertFlag)
+    invert = -1.0;
+  
   //-1 disables ROOT arg processing in TApplication
   //this is to avoid having ROOT run in batch mode
   TApplication theApp("App", &argc, argv, NULL, -1); 
@@ -145,7 +160,7 @@ int main(int argc, char **argv) {
 
   if (fileToOpen.Length()==0){
     dev.open(picoscope::PS_12BIT);
-    setupScope(dev, range, samples); 
+    setupScope(dev, range, samples,tb); 
     timebase = dev.timebaseNS();  // despite the name this returns units of seconds
 
     // auto range, set number of buffers to acquire AFTER autoRange
@@ -241,10 +256,10 @@ int main(int argc, char **argv) {
     buftitle.Form("Buffer[%d];sample time [x%.1e]; ADC",nbuf,timebase);
     hist = new TH1F("pulses", buftitle, waveform.size(), 0, waveform.size());
     for (int i = 0; i < waveform.size(); i++) { // translate buffer to histogram
-      hist->SetBinContent(i, -1*waveform[i]);
+      hist->SetBinContent(i, invert*waveform[i]);
     }
     // check if voltage is inverted - Can make this smarter...
-    if (TMath::Abs(hist->GetMinimum())>TMath::Abs(hist->GetMaximum())) hist->Scale(-1);
+    //if (TMath::Abs(hist->GetMinimum())>TMath::Abs(hist->GetMaximum())) hist->Scale(-1);
     
     dPk->SetBuffer(hist,timebase);
     dPk->AnalyzePeaks(peThreshold);

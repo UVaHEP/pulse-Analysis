@@ -29,15 +29,15 @@ double PHD(TH1F* h, TH1F* p, int firstbin, int width, double baseline){
 }
 
 
-void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers) {
+void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers, int timebase=1) {
 
   dev.open(picoscope::PS_12BIT);
   dev.setChCoupling(picoscope::A, picoscope::DC);
   dev.setChRange(picoscope::A, range);
   dev.enableChannel(picoscope::A);
 
-  dev.enableBandwidthLimit(picoscope::A); 
-  dev.setTimebase(1);
+  dev.enableBandwidthLimit(picoscope::A);
+  dev.setTimebase(timebase);
   //dev.setSimpleTrigger(EXT, 18000, trgFalling, 0, 0);
   dev.setSimpleTrigger(EXT, -5000, trgFalling, 0, 0);//triggering off laser
   dev.setSamples(samples); 
@@ -51,24 +51,26 @@ bool timeThat=false;   //can set timer to close TCanvas
 
 int main(int argc, char **argv) {
 
+  bool invertFlag = false; //invert waveforms
   ps5000a dev;
   chRange range = PS_50MV;
-  int samples = 150;    // number of ADC samples per waveform (300 ns)
+  int samples = 200;    // number of ADC samples per waveform (300 ns)
   int nbuffers=10000;   // number of waveforms per capture cycle
   int nrepeat=5;        // number of capture cycles
   int nsave=20;         // number of waveforms to save for samples
   int x0=1;             // starting bin for background integral
   int xlow=samples/2;   // starting bin for pulse integral
   int xwid=15;          // number of bins to integrate
+  int timebase = 1;
   const int nBaseline=20; // number of bins to use to estimate baseline
   int opt;
   bool findWindow=false;  // find the integration window automatically\
-
+  
   bool quit=false;
   bool quiet=false;
   TString outfn="pulsed.root";
   
-  while ((opt = getopt(argc, argv, "b:c:S:n:o:hq0xaTw:z:")) != -1) {
+  while ((opt = getopt(argc, argv, "b:c:S:n:o:t:hiq0xaTw:z:")) != -1) {
     switch (opt) {
     case 'b':
       nbuffers=atoi(optarg);
@@ -76,12 +78,18 @@ int main(int argc, char **argv) {
     case 'c':
       nrepeat=atoi(optarg);
       break;
+    case 'i':
+      invertFlag = true;
+      break;
     case 'S':
       nsave=atoi(optarg);
       break;
     case 'o':
       outfn = optarg;
       cout<<"set outfn " << outfn<<endl;
+      break;
+    case 't':
+      timebase = atoi(optarg);
       break;
     case 'z':
       x0=atoi(optarg);
@@ -110,6 +118,8 @@ int main(int argc, char **argv) {
       fprintf(stderr, "-b nbuffers[10000] -c nrepeat[5] -w nsave[20] -z0 starting bin for background integration[0]");
       fprintf(stderr, "-o output[pulsed.root]\n");
       fprintf(stderr, "-a automatically find integration window\n");
+      fprintf(stderr, "-t <timeBase> timebase value to use\n");
+      fprintf(stderr, "-i invert flag, use to invert waveforms\n");
       fprintf(stderr, "-T times out the TCanvas to close it");
       fprintf(stderr, "-x starting bin of pulse integral[50]\n");
       fprintf(stderr, "-q exit when finished\n");	    
@@ -118,18 +128,22 @@ int main(int argc, char **argv) {
   }
   TApplication theApp("App", &argc, argv, 0, -1);
   
-  setupPicoscope(dev, range, samples, nbuffers);
-  int mvScale = autoRange(dev,50000);
+  setupPicoscope(dev, range, samples, nbuffers, timebase);
+  int mvScale = autoRange(dev,2000);
+  
+  std::cout << "Finished Autoranging" << std::endl;
   TH1F *hRange    = new TH1F("hRange","Picoscope range setting",2,0,2);
   hRange->SetBinContent(1,mvScale);
+  //Pull out the 32767 and get it from dev (eventually), TA
   hRange->SetBinContent(2,1.0*mvScale/32767);
   dev.setCaptureCount(nbuffers);
+  dev.prepareBuffers();
    
   vector<TH1F *> wavesSave;
-  
+  float timebaseNS = dev.timebaseNS()*1e9;
   TH2F *hpersist=new TH2F("hpersist","Persistence Display",samples,
 			  0,samples,512,-2048,32768);  // ADC counts are reported in steps of 20 units
-  hpersist->GetXaxis()->SetTitle("Sample time [2ns/div]");
+  hpersist->GetXaxis()->SetTitle(TString::Format("Sample time [%dns/div]",(int)timebaseNS));
   
   
   TH1F *hsamp = new TH1F("hsamp","Samples", samples, 0, samples);  // use for reading buffer
@@ -140,6 +154,11 @@ int main(int argc, char **argv) {
   TH1F* hpulses0=new TH1F("hpulses0","Pulse area distribution",2500,-40000,460000);
   hpulses0->SetLineColor(kRed);
   double baseline=0;
+
+  float invert = 1.0;
+  if (invertFlag)
+    invert = -1.0;
+      
   
   for (int iblock = 0; iblock < nrepeat; iblock++) {
     cout << "Capturing Block:" << iblock << endl;     
@@ -151,8 +170,8 @@ int main(int argc, char **argv) {
       for (auto &waveform : data) {
 	hsamp->Reset();
 	for (int i = 0; i < samples; i++) {  // samples = waveform.size()
-	  hprof->Fill(i,-1*waveform[i]);
-	  hsamp->SetBinContent(i, -1*waveform[i]);
+	  hprof->Fill(i,invert*waveform[i]);
+	  hsamp->SetBinContent(i, invert*waveform[i]);
 	}
 	if (wavesSave.size()<nsave) {
 	  int nsav=wavesSave.size()+1;
@@ -178,9 +197,10 @@ int main(int argc, char **argv) {
     for (auto &waveform : data) {
       hsamp->Reset();
       for (int i = 0; i < samples; i++) {  // samples = waveform.size()
-	if (iblock>0) hprof->Fill(i,-1*waveform[i]);  // don't duplicate entries
-	hpersist->Fill(i, -1*waveform[i]);  
-	hsamp->SetBinContent(i, -1*waveform[i]);
+	//	if (iblock>0) hprof->Fill(i,-1*waveform[i]);  // don't duplicate entries
+	if (iblock>0) hprof->Fill(i,waveform[i]);  // don't duplicate entries
+	hpersist->Fill(i, invert*waveform[i]);  
+	hsamp->SetBinContent(i, invert*waveform[i]);
       }
 
       //Note! Currently this is in ADC  counts, not anything else

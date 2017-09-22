@@ -10,12 +10,12 @@
 
 
 
-void setupScope(ps5000a &dev, chRange &range, int samples) { 
-  dev.setChCoupling(picoscope::A, picoscope::DC);
+void setupScope(ps5000a &dev, chRange &range, int samples, unsigned int timebase) { 
+  dev.setChCoupling(picoscope::A, picoscope::AC);
   dev.setChRange(picoscope::A, range);
   dev.enableChannel(picoscope::A);
-  dev.enableBandwidthLimit(picoscope::A); 
-  dev.setTimebase(1);
+  //dev.enableBandwidthLimit(picoscope::A); 
+  dev.setTimebase(timebase);
   //dev.setSimpleTrigger(EXT, 18000, trgRising, 0, 0); 
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
@@ -23,7 +23,7 @@ void setupScope(ps5000a &dev, chRange &range, int samples) {
 }
 
 
-int autoRange(ps5000a &dev, int nbuf){
+int autoRange(ps5000a &dev, int nbuf) {
   vector <vector<short> > data;
   int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
   dev.setChRange(picoscope::A, PS_10MV);
@@ -84,7 +84,10 @@ int readBuffers(TString filename, vector <vector<short> > &data, double &timebas
 }
 
 
-Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
+Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app, bool invertFlag) {
+  float invert = 1.0;
+  if (invertFlag)
+    invert = -1.0;
   dev.setCaptureCount(1);
   dev.prepareBuffers();
   dev.captureBlock();
@@ -110,7 +113,7 @@ Double_t userThresholdFn(ps5000a &dev, int samples, TApplication &app) {
   
   hist = new TH1F("pulses", "pulses;x[2 ns]", waveform.size(), 0, waveform.size());
   for (int i = 0; i < waveform.size(); i++) {
-    hist->SetBinContent(i, -1*waveform[i]);
+    hist->SetBinContent(i, invert*waveform[i]);
   }
   int iymax=(int)hist->GetMaximum();
   iymax=iymax*1.1;
