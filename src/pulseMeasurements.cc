@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
   bool quiet=false;
   TString outfn="pulsed.root";
   
-  while ((opt = getopt(argc, argv, "b:c:S:n:o:t:hiq0xaTw:z:")) != -1) {
+  while ((opt = getopt(argc, argv, "b:c:S:n:o:t:x:hiq0aTw:z:")) != -1) {
     switch (opt) {
     case 'b':
       nbuffers=atoi(optarg);
@@ -149,16 +149,16 @@ int main(int argc, char **argv) {
   TH1F *hsamp = new TH1F("hsamp","Samples", samples, 0, samples);  // use for reading buffer
   TProfile *hprof=new TProfile("hprof","Wave data profile",samples,0,samples);
   TProfile *hBuf0;
-  TH1F* hpulses1=new TH1F("hpulses1","Pulse area distribution",2500,-40000,460000);
+  TH1F* hpulses1=new TH1F("hpulses1","Pulse area distribution",2700,-80000,460000);
   hpulses1->GetXaxis()->SetTitle("Pulse Area");
-  TH1F* hpulses0=new TH1F("hpulses0","Pulse area distribution",2500,-40000,460000);
+  TH1F* hpulses0=new TH1F("hpulses0","Pulse area distribution",2700,-80000,460000);
   hpulses0->SetLineColor(kRed);
   double baseline=0;
 
   float invert = 1.0;
   if (invertFlag)
     invert = -1.0;
-      
+  std::cout << "xlow:" << xlow << std::endl;
   
   for (int iblock = 0; iblock < nrepeat; iblock++) {
     cout << "Capturing Block:" << iblock << endl;     
