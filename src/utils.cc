@@ -80,7 +80,10 @@ int DarkPeaker::AnalyzePeaks(double peThreshold){
 
   // find peaks
   double threshold;
-  if (peThreshold>0) _peThreshold=peThreshold/ buf->GetMaximum();
+  if (peThreshold>0) {
+    _peThreshold=peThreshold/ buf->GetMaximum();
+    threshold = _peThreshold; 
+  }
   else threshold = _noiseCut / buf->GetMaximum();
 
   double sigma= 30;// Add adjustment to options //2; // this can/should be optimzed
@@ -89,7 +92,10 @@ int DarkPeaker::AnalyzePeaks(double peThreshold){
     npeaks=0;
     return 0;
   }
+  
+  std::cout << "Using _peThreshold of " << _peThreshold << std::endl;   
   npeaks=tspectrum->Search(buf,sigma,"nobackground,nomarkov,nodraw",threshold);
+  std::cout << "Found " << npeaks << " peaks." << std::endl; 
   //npeaks=tspectrum->Search(buf,sigma,"nomarkov,nodraw",threshold);
   //int npeaks=tspectrum->Search(buf,sigma,"nomarkov",threshold);
   //cout << "Found " << npeaks << " peaks" << endl;

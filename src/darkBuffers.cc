@@ -49,7 +49,7 @@ void usage(char **argv){
   fprintf(stderr, " -a write out all buffers. 10 are written as default\n");
   fprintf(stderr, " -u : use GUI to select 1PE threshold, default is auto threshold\n");
   fprintf(stderr, " -o output[darkBuffers.root] : Output filename\n");
-  fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_10MV,PS_20MV,PS_50MV,PS_100MV,PS_500MV,PS_1V,PS_2V,PS_5V]\n");;
+  fprintf(stderr, " -R Range[PS_20MV] : Voltage range selection [PS_10MV,PS_20MV,PS_50MV,PS_100MV,PS_200MV,PS_500MV,PS_1V,PS_2V,PS_5V]\n");;
   fprintf(stderr, "                     !! currently over written by auto ranging feature\n");
   fprintf(stderr, " -P [ADC] : User setting to 1PE threshold in ADC counts\n");
   fprintf(stderr, " -f filename : do not acquire data, process data from file\n");
@@ -59,7 +59,7 @@ void usage(char **argv){
 
 int main(int argc, char **argv) {
   TString outfn="darkBuffers.root";
-  TString tsRanges[]={"PS_10MV","PS_20MV","PS_50MV","PS_100MV","PS200MV","PS_500MV","PS_1V","PS_2V","PS_5V"};
+  TString tsRanges[]={"PS_10MV","PS_20MV","PS_50MV","PS_100MV","PS_200MV","PS_500MV","PS_1V","PS_2V","PS_5V"};
   int mvRange[]={10,20,50,100,200,500,1000,2000,5000};
   int DATA_VERSION=2;  // data format version for output ROOT file
   chRange range = PS_20MV;  // default range
@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
   bool invertFlag = false;
   int mvScale;
   TString fileToOpen;
-
+  TString rangeOpt; 
   
   while ((opt = getopt(argc, argv, "s:b:o:P:R:t:f:uhiq0a")) != -1) {
     switch (opt) {
@@ -106,10 +106,12 @@ int main(int argc, char **argv) {
     case 'P':
       peThreshold=atof(optarg);
       std::cout<<"User input 1PE value " << peThreshold<<std::endl;
+      break;
     case 'R':
       autorange=false;
+      rangeOpt = TString(optarg).Strip().String();
       for (int i=0; i<sizeof(tsRanges)/sizeof(TString); i++){
-	if (TString(optarg)==tsRanges[i]){
+	if (rangeOpt==tsRanges[i]){
 	  range=(chRange)(i);
 	  validRange=true;
 	}
@@ -167,16 +169,17 @@ int main(int argc, char **argv) {
     if (autorange) {
       std::cout << "Autoranging....." << std::endl;
       mvScale=autoRange(dev);
+      std::cout << "mvScale: " << mvScale<< std::endl;
     }
     Channel A = dev.getChannel(picoscope::A);
     range = std::get<picoscope::arange>(A);
     
     // run GUI to pick 1PE threshold
     if (userThreshold) {
-      peThreshold = userThresholdFn(dev, samples, theApp);
+      peThreshold = userThresholdFn(dev, samples, theApp, true);
       std::cout << "pe Threshold set by GUI: " << peThreshold << std::endl; 
     }
-  
+    dev.enableBandwidthLimit(picoscope::A);
     dev.setCaptureCount(nbuffers);
     acquireBuffers(dev,data);
     dev.close();
@@ -248,7 +251,9 @@ int main(int argc, char **argv) {
   TString buftitle;
   vector<peakData> *vPeaks = new vector<peakData>; // keep track of all peak info
   FitDcrAp *dcrFitter = new FitDcrAp();
-  
+
+  std::cout << "Using PE Threshold of: " << peThreshold << std::endl; 
+      
   // loop through buffers 
   for (auto &waveform : data) {   
     nbuf++;

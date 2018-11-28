@@ -27,7 +27,8 @@ void setupPicoscope(ps6000 &dev, chRange range, int samples, int nbuffers) {
 
   //  dev.enableBandwidthLimit(picoscope::A); 
   dev.setTimebase(1); //400 ns
-  dev.setSimpleTrigger(AUX, 18000, trgFalling, 0, 0);//When triggering off anything else
+  //  dev.setSimpleTrigger(AUX, 18000, trgFalling, 0, 0);//When triggering off anything else
+    dev.setSimpleTrigger(AUX, -5000, trgFalling, 0, 0);//When triggering off anything else
   //dev.setSimpleTrigger(EXT, -10000, trgFalling, 0, 0);//When triggering off laser 
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
@@ -53,7 +54,7 @@ LightPeaker *lPk = new LightPeaker(0);
 int main(int argc, char **argv) {
 
   ps6000 dev;
-  chRange range        = PS_100MV;     //range on picoscope, will capture amplitudes over 100pe
+  chRange range        = PS_50MV;     //range on picoscope, will capture amplitudes over 100pe
   int samples          = 3000;       // number of samples per waveform
   int nbuffers         = 10000;     // number of waveforms per capture cycle
   double theshLowLimit = 0;         // just so it works in LightPeaker

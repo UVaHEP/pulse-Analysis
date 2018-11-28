@@ -39,7 +39,7 @@ void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers, int 
   dev.enableBandwidthLimit(picoscope::A);
   dev.setTimebase(timebase);
   //dev.setSimpleTrigger(EXT, 18000, trgFalling, 0, 0);
-  dev.setSimpleTrigger(EXT, -5000, trgFalling, 0, 0);//triggering off laser
+  dev.setSimpleTrigger(EXT, -2500, trgFalling, 0, 0);//triggering off laser
   dev.setSamples(samples); 
   dev.setPreTriggerSamples(samples/2);
   dev.setPostTriggerSamples(samples/2);
@@ -48,6 +48,20 @@ void setupPicoscope(ps5000a &dev, chRange range, int samples, int nbuffers, int 
 }
 
 bool timeThat=false;   //can set timer to close TCanvas
+
+void usage(){
+  fprintf(stderr, "Usage: \n");
+  fprintf(stderr, "-b nbuffers[10000] -c nrepeat[5] -w nsave[20] -z0 starting bin for background integration[0]");
+  fprintf(stderr, "-o output[pulsed.root]\n");
+  fprintf(stderr, "-a automatically find integration window\n");
+  fprintf(stderr, "-t <timeBase> timebase value to use\n");
+  fprintf(stderr, "-i invert flag, use to invert waveforms\n");
+  fprintf(stderr, "-T times out the TCanvas to close it");
+  fprintf(stderr, "-x starting bin of pulse integral[50]\n");
+  fprintf(stderr, "-q exit when finished\n");
+}
+
+
 
 int main(int argc, char **argv) {
 
@@ -114,15 +128,7 @@ int main(int argc, char **argv) {
       break;	
     case 'h':
     default: /* '?' */
-      fprintf(stderr, "Usage: %s ",argv[0]);
-      fprintf(stderr, "-b nbuffers[10000] -c nrepeat[5] -w nsave[20] -z0 starting bin for background integration[0]");
-      fprintf(stderr, "-o output[pulsed.root]\n");
-      fprintf(stderr, "-a automatically find integration window\n");
-      fprintf(stderr, "-t <timeBase> timebase value to use\n");
-      fprintf(stderr, "-i invert flag, use to invert waveforms\n");
-      fprintf(stderr, "-T times out the TCanvas to close it");
-      fprintf(stderr, "-x starting bin of pulse integral[50]\n");
-      fprintf(stderr, "-q exit when finished\n");	    
+      usage();
       exit(EXIT_FAILURE);
     }
   }

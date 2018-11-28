@@ -14,7 +14,7 @@ void setupScope(ps5000a &dev, chRange &range, int samples, unsigned int timebase
   dev.setChCoupling(picoscope::A, picoscope::AC);
   dev.setChRange(picoscope::A, range);
   dev.enableChannel(picoscope::A);
-  //dev.enableBandwidthLimit(picoscope::A); 
+  dev.enableBandwidthLimit(picoscope::A); 
   dev.setTimebase(timebase);
   //dev.setSimpleTrigger(EXT, 18000, trgRising, 0, 0); 
   dev.setSamples(samples); 
